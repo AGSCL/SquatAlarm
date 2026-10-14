@@ -12,9 +12,11 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.darkColorScheme
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableStateOf
 import com.squatalarm.app.squat.SquatCounter
 import com.squatalarm.app.squat.SquatDetector
 import com.squatalarm.app.ui.AlarmScreen
+import com.squatalarm.app.ui.rejectText
 
 /**
  * Pantalla de alarma: se muestra sobre el bloqueo, fija la pantalla (bloquea Inicio/Recientes),
@@ -28,6 +30,7 @@ class AlarmActivity : ComponentActivity(), SquatDetector.Listener {
     private var finished = false
     private val done = mutableIntStateOf(0)
     private val aVert = mutableFloatStateOf(0f)
+    private val rejection = mutableStateOf("")
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -53,6 +56,7 @@ class AlarmActivity : ComponentActivity(), SquatDetector.Listener {
                     thresholdDown = det.counter.thresholdDown,
                     thresholdUp = det.counter.thresholdUp,
                     sensorAvailable = det.isAvailable,
+                    rejection = rejection.value,
                     showEscape = showEscape,
                     onEscape = { dismiss() },
                 )
@@ -76,7 +80,12 @@ class AlarmActivity : ComponentActivity(), SquatDetector.Listener {
 
     override fun onSquat(count: Int, squat: SquatCounter.Squat) {
         done.intValue = count
+        rejection.value = ""
         if (count >= required && !finished) dismiss()
+    }
+
+    override fun onRejected(squat: SquatCounter.Squat) {
+        rejection.value = rejectText(squat.reject)
     }
 
     override fun onSample(aVert: Float, state: SquatCounter.State) {

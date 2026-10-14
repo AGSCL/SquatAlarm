@@ -1,5 +1,10 @@
 package com.squatalarm.app.ui
 
+import android.graphics.BitmapFactory
+import android.graphics.ImageDecoder
+import android.graphics.drawable.AnimatedImageDrawable
+import android.os.Build
+import android.widget.ImageView
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Arrangement
@@ -25,6 +30,9 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.viewinterop.AndroidView
+import com.squatalarm.app.squat.Calibration
+import com.squatalarm.app.squat.SquatCounter
 
 val GREEN = Color(0xFF66BB6A)
 val RED = Color(0xFFEF5350)
@@ -65,6 +73,48 @@ fun BigNumber(text: String, color: Color = Color.Unspecified) {
         color = color,
         modifier = Modifier.fillMaxWidth(),
     )
+}
+
+/** GIF de postura de assets/guides (animado en Android 9+, primer cuadro en 8.x). */
+@Composable
+fun GuideGif(name: String, modifier: Modifier = Modifier) {
+    AndroidView(
+        factory = { ctx -> ImageView(ctx).apply { adjustViewBounds = true } },
+        update = { view ->
+            if (view.tag != name) {
+                view.tag = name
+                val path = "guides/$name.gif"
+                try {
+                    if (Build.VERSION.SDK_INT >= 28) {
+                        val d = ImageDecoder.decodeDrawable(ImageDecoder.createSource(view.context.assets, path))
+                        view.setImageDrawable(d)
+                        (d as? AnimatedImageDrawable)?.start()
+                    } else {
+                        view.context.assets.open(path).use { view.setImageBitmap(BitmapFactory.decodeStream(it)) }
+                    }
+                } catch (e: Exception) {
+                    view.setImageDrawable(null)
+                }
+            }
+        },
+        modifier = modifier.fillMaxWidth().height(220.dp),
+    )
+}
+
+/** Parámetros de detección en una línea. */
+fun vetoSummary(c: Calibration): String {
+    val peak = if (c.maxPeak >= SquatCounter.NO_LIMIT) "sin límite" else "%.1f m/s²".format(c.maxPeak)
+    return "Bajada %.1f · subida %.1f m/s² · mín. %d ms · pico máx. %s · inclinación %.0f–%.0f°".format(
+        c.thresholdDown, c.thresholdUp, c.minCycleMs, peak, c.tiltMinDeg, c.tiltMaxDeg,
+    )
+}
+
+/** Explicación breve de por qué un ciclo no se contó. */
+fun rejectText(r: SquatCounter.Reject): String = when (r) {
+    SquatCounter.Reject.TOO_HARD -> "No contó: movimiento demasiado brusco (¿con los brazos?)"
+    SquatCounter.Reject.TOO_LITTLE_TILT -> "No contó: el torso no se inclinó (¿solo brazos?)"
+    SquatCounter.Reject.TOO_MUCH_TILT -> "No contó: demasiada inclinación (¿agachado sin doblar las rodillas?)"
+    SquatCounter.Reject.NONE -> ""
 }
 
 /** Aceleración vertical en vivo con los umbrales de bajada (rojo) y subida (verde). */

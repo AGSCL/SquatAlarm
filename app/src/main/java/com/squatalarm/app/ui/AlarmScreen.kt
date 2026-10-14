@@ -38,6 +38,7 @@ fun AlarmScreen(
     thresholdDown: Float,
     thresholdUp: Float,
     sensorAvailable: Boolean,
+    rejection: String,
     showEscape: Boolean,
     onEscape: () -> Unit,
 ) {
@@ -75,6 +76,10 @@ fun AlarmScreen(
                 )
                 Spacer(Modifier.height(16.dp))
                 LiveBar(aVert, thresholdDown, thresholdUp)
+                if (rejection.isNotEmpty()) {
+                    Spacer(Modifier.height(12.dp))
+                    Text(rejection, color = RED, fontSize = 16.sp, textAlign = TextAlign.Center)
+                }
             }
 
             Column(horizontalAlignment = Alignment.CenterHorizontally) {

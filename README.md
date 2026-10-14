@@ -1,108 +1,171 @@
 # Alarma Sentadillas (Android)
 
-Alarma que **solo se apaga haciendo sentadillas**, al estilo de la misión "sentadillas" de Alarmy.
-Detecta el movimiento con el acelerómetro (teléfono sostenido contra el pecho), se preconfigura con una fase
-de calibración/validación formal (≥30 sentadillas, pruebas de falsación, sensibilidad y especificidad), y
-mientras suena cierra el menú de apagado para que no se pueda apagar el teléfono.
+Alarma que **solo se apaga haciendo sentadillas**, al estilo de la misión «sentadillas» de Alarmy.
+Detecta el movimiento con los sensores del teléfono (sostenido contra el pecho). Antes de usarla, una fase de
+preconfiguración bayesiana la ajusta a ti con series de sentadillas, pruebas de falsación y preguntas de
+verificación. Mientras suena, cierra el menú de apagado para que no se pueda apagar el teléfono.
 
 ## Obtener el APK
 
-**Opción A — GitHub Actions (sin instalar nada):**
-1. Crea un repositorio en GitHub (puede ser privado) y sube esta carpeta completa (incluida `.github/`).
-2. En la pestaña **Actions** se ejecuta solo el flujo *Build APK* (~5 min). Al terminar, el APK queda en
-   **Releases** (`SquatAlarm.apk`) y también como artefacto del flujo.
-3. Copia el APK al teléfono e instálalo (permite "instalar apps desconocidas" cuando lo pida).
+**GitHub Actions (sin instalar nada):** cada push a `main` compila el APK firmado (~3 min) y lo publica en
+**Releases** como `SquatAlarm.apk`. **Android Studio:** `File → Open` → carpeta → **Run ▶**.
 
-**Opción B — Android Studio:** `File → Open` → carpeta `SquatAlarm` → esperar el sync → **Run ▶** con el teléfono
-por USB, o `Build → Build APK(s)` (sale en `app/build/outputs/apk/`).
+Todas las builds usan la misma clave (`keystore/squatalarm.jks`, contraseña `squatalarm`), así que cada APK nuevo
+se instala encima del anterior sin desinstalar. Requisitos: Android 8.0+ (API 26).
 
-Todas las builds (Actions, Android Studio, debug o release) usan la misma clave `keystore/squatalarm.jks`
-(contraseña `squatalarm`), así que cualquier APK nuevo se instala encima del anterior sin desinstalar.
+## Primer uso
 
-Requisitos: Android 8.0+ (API 26). Compila contra Android 15 (API 35).
+1. **Permisos** → concede los 6. Si sale «A la app se le negó el acceso», ver [Permisos bloqueados](#permisos-bloqueados-y-play-protect).
+2. **Preconfigurar** (unos 8–10 min, ver abajo). Se guarda sola al terminar.
+3. **Probar detección**: cada sentadilla suma 1. Cuando un movimiento no cuenta, la pantalla dice por qué
+   (p. ej. «el torso no se inclinó (¿solo brazos?)»).
+4. **Probar alarma en 10 s**, bloquear el teléfono y esperar. En modo prueba hay botón para apagarla; en la real no.
+5. Hora, días, número de sentadillas y **apagado de seguridad** (minutos tras los que se apaga sola si la detección
+   fallara; es la única salida sin sentadillas). Activar el interruptor.
 
-## Primer uso (una sola vez)
+## Preconfiguración bayesiana
 
-1. **Permisos** → concede los 6 (notificaciones, alarmas exactas, pantalla completa, mostrar sobre otras apps,
-   servicio de accesibilidad, sin restricción de batería). El de accesibilidad se activa en
-   *Ajustes → Accesibilidad → Apps instaladas → Alarma Sentadillas*.
-2. **Preconfigurar** (unos 5 min, ver abajo).
-3. **Probar detección**: cada sentadilla debe sumar 1. "Exigencia" multiplica los umbrales por si quieres afinar a mano.
-4. **Probar alarma en 10 s**: bloquea el teléfono y espera. Suena, vibra, aparece sobre el bloqueo y fija la pantalla.
-   En modo prueba hay un botón para apagarla; en la alarma real no.
-5. Pon la hora, los días, cuántas sentadillas exige y el **apagado de seguridad** (minutos tras los cuales se apaga
-   sola si la detección fallara; es la única salida sin sentadillas), y activa el interruptor.
+### Pasos
 
-## Fase de preconfiguración
+Las series de 10 sentadillas (30–60 en total) van **intercaladas** con 6 pruebas de falsación de 20 s, para que el
+modelo aprenda desde el inicio qué es y qué no es una sentadilla y para repartir la fatiga. Antes de cada paso se ve
+un GIF de la postura. Un pitido marca el inicio y, en las falsaciones, también el final, porque con el teléfono contra
+el pecho no se ve la pantalla. Tras cada paso la app dice cuánto contó y pregunta qué hiciste realmente; si el
+conteo no coincide, la diferencia queda registrada como falsos positivos o falsos negativos.
 
-Es un pequeño estudio de validación del detector con tus propios datos:
+<table>
+<tr>
+<td align="center"><img src="app/src/main/assets/guides/sentadilla.gif" width="150"><br>Serie de sentadillas</td>
+<td align="center"><img src="app/src/main/assets/guides/quieto.gif" width="150"><br>Falsación: quieto</td>
+<td align="center"><img src="app/src/main/assets/guides/caminar.gif" width="150"><br>Falsación: caminar</td>
+<td align="center"><img src="app/src/main/assets/guides/sacudir.gif" width="150"><br>Falsación: sacudir</td>
+</tr>
+<tr>
+<td align="center"><img src="app/src/main/assets/guides/inclinarse.gif" width="150"><br>Falsación: inclinarse<br>(rodillas rectas)</td>
+<td align="center"><img src="app/src/main/assets/guides/brazos_lento.gif" width="150"><br>Falsación: solo brazos,<br>lento y vertical</td>
+<td align="center"><img src="app/src/main/assets/guides/brazos_rapido.gif" width="150"><br>Falsación: solo brazos,<br>rápido</td>
+<td></td>
+</tr>
+</table>
 
-| Paso | Qué haces | Qué pregunta la app | Para qué sirve |
-|---|---|---|---|
-| Series de 10 (30–60 sentadillas en total) | Sentadillas completas a tu ritmo; tocas «Terminé» | «La app contó X. ¿Cuántas hiciste realmente?» | Positivos verdaderos / falsos negativos (sensibilidad) |
-| Falsación 1: quieto (20 s) | De pie, sin moverte | «¿Hiciste alguna sentadilla real?» (normalmente 0) | Falsos positivos por ruido |
-| Falsación 2: caminar en el lugar (20 s) | Marcha enérgica | ídem | Falsos positivos por pasos |
-| Falsación 3: sacudir el teléfono (20 s) | Arriba y abajo, rápido | ídem | Falsos positivos por sacudidas |
-| Falsación 4: inclinarse (20 s) | Flexión de cintura lenta, rodillas rectas | ídem | Falsos positivos por movimientos lentos parecidos |
-| Ajuste automático | — | Prioridad sensibilidad ↔ especificidad (peso) | Busca los umbrales que maximizan w·sens + (1−w)·esp |
-| Validación | 10 sentadillas + 20 s caminando con los umbrales ya ajustados | Conteo real | Sens/esp con datos **no** usados en el ajuste |
+La línea punteada marca la altura del teléfono de pie y el punto verde su altura actual. Los brazos pueden bajar
+el teléfono tanto como una sentadilla, pero no lo inclinan como el torso.
 
-Definiciones (ventanas del largo de una sentadilla tuya = tiempo de las series / sentadillas declaradas):
+### Torso vs. brazos
 
-- **Sensibilidad** = sentadillas reales detectadas / sentadillas reales declaradas.
-- **Especificidad** = ventanas sin sentadilla en las que no hubo falsa detección / total de ventanas sin sentadilla.
-- Si en una serie la app contó más de lo que declaras, el exceso son falsos positivos; si contó menos, falsos negativos.
-- Cada paso se puede repetir antes de confirmarlo. Al final puedes cambiar el peso y re-ajustar al instante, validar
-  con una serie extra (mínimos sugeridos: sens 80 %, esp 90 %), guardar o repetir todo.
+Además de los umbrales de amplitud y tiempo, cada ciclo candidato se mide con dos rasgos que separan el torso de
+los brazos:
 
-El ajuste re-analiza toda la señal grabada con cada combinación de umbrales (bajada 0,4–3,0 m/s², subida 0,4–3,0 m/s²,
-tiempo mínimo bajada→subida 300/400/500 ms: 2.187 combinaciones, < 2 s en el teléfono) y, entre los empates, elige
-el centro de la meseta para que el resultado sea robusto. La pantalla principal muestra con cuántas sentadillas se
-preconfiguró y las métricas de ajuste y validación.
+- **Inclinación**: es el ángulo máximo entre la gravedad al inicio del ciclo y la gravedad durante el ciclo, medida
+  en el marco del teléfono. Con el teléfono contra el pecho, el torso se inclina al bajar (típicamente 15–45°). Si
+  se mueve el teléfono vertical con los brazos, la inclinación queda en ~0°. Si se inclina la cintura con las
+  rodillas rectas, se pasa de 60°.
+- **Pico máximo de aceleración**: los brazos mueven el teléfono mucho más bruscamente que el cuerpo entero.
+
+Un ciclo que cae fuera de la ventana de inclinación o supera el pico máximo **no cuenta** (veto).
+
+### Modelo
+
+Cada combinación θ de parámetros define una configuración del detector: umbral de bajada y de subida
+(0,4–3,0 m/s²), tiempo mínimo bajada→subida (300/400/500 ms), pico máximo (sin límite, 12, 9, 7, 5,5, 4,5 o
+3,5 m/s²) y ventana de inclinación (mínimo 0/5/10/20°, máximo 180/90/60/45/30°). En total son 306.180
+combinaciones, y cada una tiene sus propios posteriores:
+
+- sensibilidad S_θ ~ Beta(1 + VP_θ, 1 + FN_θ)
+- especificidad E_θ ~ Beta(1 + VN_θ, 1 + FP_θ)
+
+La previa es uniforme, Beta(1,1).
+
+- **Unidad de análisis**: cada tramo se divide en ventanas del largo de una sentadilla tuya, calculado como la
+  duración de la primera serie dividida por las sentadillas declaradas. En cada tramo, las sentadillas declaradas
+  son positivas y el resto de las ventanas son negativas. Si la app cuenta de más, el exceso son falsos positivos;
+  si cuenta de menos, el faltante son falsos negativos.
+- **Actualización por paso**: tras cada paso, solo ese tramo se re-analiza con todas las θ y los conteos se suman,
+  porque el modelo es conjugado. Los vetos se aplican después del análisis, lo que da exactamente el mismo resultado
+  que contar en vivo, y una prueba automática lo verifica. El detector pasa a la θ con mayor utilidad esperada a
+  posteriori, **w·E[S] + (1−w)·E[E]**: la «exigencia» se adapta paso a paso y se ve en vivo en el paso siguiente.
+- **Empates**: gana el veto menos restrictivo, porque sin evidencia de trampa no se impone uno, y después el centro
+  de la meseta de umbrales.
+- **Resultados**: medias posteriores con intervalos de credibilidad del 95 % (colas iguales, cuantiles exactos de la
+  Beta), la traza de aprendizaje paso a paso, la comparación con los valores por defecto y el conteo por paso. El
+  peso w se cambia al final y el resultado se recalcula al instante, sin volver a analizar.
+- **Validación** (opcional, recomendada): 10 sentadillas, caminar y solo brazos, con datos que **no** se usaron en
+  el ajuste. Muestra el posterior, P(S ≥ 0,8) y P(E ≥ 0,9). Las cifras de entrenamiento son optimistas porque θ se
+  eligió con esos mismos datos; las de validación no.
+
+## Permisos bloqueados y Play Protect
+
+Son dos bloqueos distintos.
+
+### 1. «A la app se le negó el acceso» / «Ajuste restringido» (Android 13+)
+
+Android bloquea **Servicio de accesibilidad** y **Mostrar sobre otras apps** (y en Android 15, otros más) en las apps
+instaladas desde un APK descargado. **No lo bloquea Google Play y no hay que pedirle nada a nadie**: se desbloquea en
+el teléfono, una vez por app.
+
+1. En la app, ve a **Permisos** → **Conceder** en el permiso bloqueado → aparece el aviso → **Cerrar**. Este intento
+   es necesario: la opción del paso 2 solo aparece después.
+2. Toca **Abrir info de la app** (en la misma pantalla de Permisos), o ve a Ajustes → Aplicaciones → Alarma
+   Sentadillas. Ahí: **⋮** (arriba a la derecha) → **Permitir ajustes restringidos** → confirma con tu PIN o huella.
+3. Vuelve a **Permisos** y toca **Conceder** en ambos.
+
+Si no ves la opción, busca «restringidos» en el buscador de Ajustes; algunas capas de fabricante la cambian de lugar.
+
+### 2. Aviso de Play Protect («App no reconocida», «puede robar tu información»)
+
+- **Para instalar**: toca **Más detalles → Instalar de todas formas**. Si esa opción no aparece, ve a Play Store →
+  tu perfil → **Play Protect** → ⚙️, desactiva **Analizar apps con Play Protect**, instala y vuelve a activarlo.
+- **Para pedirle a Google que deje de marcarla** (opcional): usa el
+  [formulario de apelación de Play Protect](https://support.google.com/googleplay/android-developer/contact/protectappeals).
+  Pide correo, nombre de desarrollador, paquete `com.squatalarm.app`, el **SHA-256 del APK** analizado en VirusTotal
+  y una justificación. Primero sube el APK a [virustotal.com](https://www.virustotal.com): al terminar el análisis,
+  la pestaña *Details* muestra el SHA-256 para copiarlo. Google no responde y la decisión es final. Cada build nuevo
+  tiene otro SHA-256.
+
+  Justificación lista para pegar:
+
+  > SquatAlarm is a personal, open-source alarm clock (https://github.com/AGSCL/SquatAlarm) that only turns off after
+  > the user performs squats detected with the accelerometer. It uses AccessibilityService exclusively to close the
+  > power menu while the alarm is ringing, and SYSTEM_ALERT_WINDOW only to bring the alarm screen back to the
+  > foreground. The app does not request the INTERNET permission, so it cannot transmit any data. The source code
+  > and the build pipeline (GitHub Actions) are public.
+
+- **La vía que elimina ambos avisos**: publicarla en Google Play (cuenta de desarrollador, track de prueba interna).
+  Instalada desde Play, no hay ajustes restringidos ni aviso de Play Protect. Google exige declarar el uso de
+  Accesibilidad.
 
 ## Cómo funciona
 
-- **Detección** (`squat/SquatCounter.kt`, Kotlin puro): proyecta la aceleración lineal sobre la gravedad (vale en
-  cualquier orientación), la filtra (~2-3 Hz) y busca el patrón de una sentadilla: lóbulo negativo (empieza a bajar)
-  seguido de lóbulo positivo (frena abajo y se impulsa). Sacudidas y pasos se descartan por ser demasiado rápidos.
-  `squat/SquatDetector.kt` es la capa de sensores; `squat/Tuner.kt` el replay, las métricas y la búsqueda en rejilla.
-- **Alarma** (`alarm/`): `AlarmManager.setAlarmClock` → `AlarmReceiver` → `AlarmService` (primer plano: sonido de
-  alarma a volumen máximo, vibración, wakelock) → `AlarmActivity` sobre la pantalla de bloqueo. Un vigilante cada 4 s
-  vuelve a subir el volumen, reenciende la pantalla y trae la alarma al frente si la minimizas. El progreso de
-  sentadillas se conserva si la pantalla se apaga.
-- **Que no se pueda apagar el teléfono**:
-  - `block/PowerMenuBlockerService` (accesibilidad): en cuanto aparece el menú de apagado/reinicio lo cierra con *Atrás*.
-  - La pantalla de alarma queda **fijada** (`startLockTask`): Inicio, Recientes y notificaciones quedan bloqueados.
-    La primera vez Android pide confirmar "Fijar pantalla": acepta.
-  - Atrás y los botones de volumen no hacen nada; la alarma usa el canal de alarma, que ignora No molestar.
-  - Si aun así el teléfono se reinicia (botón de encendido mantenido 10+ s, que ninguna app puede impedir),
-    `BootReceiver` vuelve a hacer sonar la alarma al encender.
-  - Red de seguridad: la alarma se apaga sola a los N minutos configurados ("Apagado de seguridad", 5–180).
+- `squat/SquatCounter.kt` (Kotlin puro): proyecta la aceleración lineal sobre la gravedad, la filtra (~2–3 Hz) y busca
+  el patrón de una sentadilla (lóbulo negativo → lóbulo positivo). Mide la inclinación del ciclo y aplica los vetos.
+- `squat/Tuner.kt`: `BayesTuner` (posteriores por combinación, actualización por paso), `BetaDist` (CDF y cuantiles
+  exactos), conteos por ventanas.
+- `squat/SquatDetector.kt`: capa de sensores (gravedad + aceleración lineal; respaldo con acelerómetro).
+- `alarm/`: `setAlarmClock` → servicio en primer plano (sonido de alarma a volumen máximo, vibración, wakelock) →
+  pantalla sobre el bloqueo, fijada (`startLockTask`). Atrás y volumen no hacen nada. Un vigilante la vuelve a traer
+  al frente.
+- `block/PowerMenuBlockerService` (accesibilidad): cierra el menú de apagado en cuanto aparece. Si el teléfono igual
+  se reinicia (botón de encendido 10+ s), la alarma vuelve a sonar al encender. Para el bloqueo total del menú,
+  ver «device owner» abajo.
 
 ### Bloqueo al 100 % (opcional, avanzado)
 
-Android solo desactiva de verdad el menú de encendido para apps "device owner". Requiere un teléfono **sin cuentas
-configuradas** (o un perfil nuevo) y ADB:
+Requiere un teléfono sin cuentas configuradas y ADB:
+`adb shell dpm set-device-owner com.squatalarm.app/.block.AdminReceiver`. Para revertir:
+`adb shell dpm remove-active-admin com.squatalarm.app/.block.AdminReceiver`.
 
-```
-adb shell dpm set-device-owner com.squatalarm.app/.block.AdminReceiver
-```
+## Pruebas y herramientas
 
-Con eso la pantalla de alarma entra en modo kiosco sin diálogo y el sistema oculta por completo el menú de apagado.
-Para revertir: `adb shell dpm remove-active-admin com.squatalarm.app/.block.AdminReceiver`.
+- `core-check/run.sh`: compila el núcleo (contador, vetos, motor bayesiano, Beta) con el Kotlin embebido de Gradle y
+  corre las pruebas con señales sintéticas. Verifica que los vetos atrapan los brazos, que los cuantiles coinciden con
+  SciPy, que la actualización incremental coincide con la evaluación desde cero y que el peso actúa en la dirección
+  correcta. Solo necesita `gradle`.
+- `tools/make_guides.py`: regenera los GIFs de postura (requiere Pillow).
 
-## Pruebas del núcleo sin SDK de Android
+## Limitaciones
 
-`core-check/run.sh` compila `SquatCounter`, `Calibration` y `Tuner` con el Kotlin embebido de Gradle y corre
-asserts con señales sintéticas (sentadillas, sacudidas, caminar, inclinarse, conteos corregidos por el usuario,
-efecto del peso sens/esp). Requiere solo `gradle` en el PATH.
-
-## Limitaciones conocidas
-
-- Mover el teléfono arriba y abajo con los brazos al ritmo de una sentadilla también cuenta (igual que en Alarmy);
-  no se incluye como prueba de falsación porque ningún umbral de aceleración lo separa.
-- Algunas capas de fabricante (Xiaomi, Huawei) matan servicios en segundo plano: concede "sin restricción de batería"
-  y, si existe, "inicio automático".
-- El menú de apagado se cierra en cuanto aparece, pero en teléfonos muy lentos puede verse un instante.
-- El código Android/Compose no se pudo compilar en el entorno donde se generó (sin SDK); el núcleo sí. Si Android
-  Studio o Actions marcan algo, suele ser una versión de AGP/Kotlin: acepta la que sugieran.
+- Ningún sensor del teléfono puede impedir del todo la trampa: quien mueva el teléfono con los brazos **imitando a la
+  vez** amplitud, ritmo e inclinación del torso puede engañarlo. Las falsaciones miden cuán difícil es; «solo brazos,
+  lento» es la más exigente.
+- Algunas capas de fabricante (Xiaomi, Huawei) matan servicios en segundo plano: concede «sin restricción de batería»
+  y, si existe, «inicio automático».

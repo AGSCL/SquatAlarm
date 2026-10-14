@@ -64,6 +64,9 @@ class AlarmPrefs(context: Context) {
             thresholdUp = sp.getFloat("cal_thr_up", Calibration.DEFAULT.thresholdUp),
             minCycleMs = sp.getLong("cal_min_cycle", Calibration.DEFAULT.minCycleMs),
             maxCycleMs = sp.getLong("cal_max_cycle", Calibration.DEFAULT.maxCycleMs),
+            maxPeak = sp.getFloat("cal_max_peak", Calibration.DEFAULT.maxPeak),
+            tiltMinDeg = sp.getFloat("cal_tilt_min", Calibration.DEFAULT.tiltMinDeg),
+            tiltMaxDeg = sp.getFloat("cal_tilt_max", Calibration.DEFAULT.tiltMaxDeg),
             calibrated = sp.getBoolean("cal_done", false),
             nSquats = sp.getInt("cal_n", 0),
             sens = sp.getFloat("cal_sens", -1f),
@@ -76,6 +79,9 @@ class AlarmPrefs(context: Context) {
             .putFloat("cal_thr_up", c.thresholdUp)
             .putLong("cal_min_cycle", c.minCycleMs)
             .putLong("cal_max_cycle", c.maxCycleMs)
+            .putFloat("cal_max_peak", c.maxPeak)
+            .putFloat("cal_tilt_min", c.tiltMinDeg)
+            .putFloat("cal_tilt_max", c.tiltMaxDeg)
             .putBoolean("cal_done", c.calibrated)
             .putInt("cal_n", c.nSquats)
             .putFloat("cal_sens", c.sens)

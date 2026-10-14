@@ -38,6 +38,9 @@ private class TestState(strictness: Float) {
     var lastInfo by mutableStateOf("")
 }
 
+private fun cycleInfo(s: SquatCounter.Squat) =
+    "bajada %.1f · subida %.1f m/s² · %d ms · inclinación %.0f°".format(s.negPeak, s.posPeak, s.cycleMs, s.tiltDeg)
+
 /** Prueba rápida con los mismos umbrales que usará la alarma (calibración × exigencia). */
 @Composable
 fun TestScreen(onDone: () -> Unit) {
@@ -49,7 +52,11 @@ fun TestScreen(onDone: () -> Unit) {
         SquatDetector.fromPrefs(context, prefs, object : SquatDetector.Listener {
             override fun onSquat(count: Int, squat: SquatCounter.Squat) {
                 st.count = count
-                st.lastInfo = "Última: bajada %.2f · subida %.2f m/s² · %d ms".format(squat.negPeak, squat.posPeak, squat.cycleMs)
+                st.lastInfo = "✓ Última: " + cycleInfo(squat)
+            }
+
+            override fun onRejected(squat: SquatCounter.Squat) {
+                st.lastInfo = rejectText(squat.reject) + "\n" + cycleInfo(squat)
             }
 
             override fun onSample(aVert: Float, state: SquatCounter.State) {
@@ -84,6 +91,7 @@ fun TestScreen(onDone: () -> Unit) {
                 else "Sin preconfigurar: se usan valores por defecto. Mejor preconfigura primero.",
                 color = if (calibration.calibrated) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.error,
             )
+            Text(vetoSummary(calibration), style = MaterialTheme.typography.bodySmall)
             if (!detector.isAvailable) {
                 Text("⚠ Este teléfono no tiene acelerómetro.", color = MaterialTheme.colorScheme.error)
             }

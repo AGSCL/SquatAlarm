@@ -10,7 +10,7 @@ import kotlin.math.sqrt
 
 /**
  * Lee los sensores, proyecta la aceleración lineal sobre la vertical (vale en cualquier orientación)
- * y alimenta un [SquatCounter]. El teléfono se sostiene contra el pecho.
+ * y alimenta un [SquatCounter] junto con la orientación del teléfono. El teléfono va contra el pecho.
  */
 class SquatDetector(
     context: Context,
@@ -20,11 +20,12 @@ class SquatDetector(
 
     interface Listener {
         fun onSquat(count: Int, squat: SquatCounter.Squat)
+        fun onRejected(squat: SquatCounter.Squat) {}
         fun onSample(aVert: Float, state: SquatCounter.State) {}
     }
 
-    /** Recibe cada muestra vertical sin filtrar (m/s², ms) para grabarla y re-analizarla después. */
-    var recorder: ((Float, Long) -> Unit)? = null
+    /** Recibe cada muestra tal como entra al contador (a, t, gravedad unitaria) para re-analizarla después. */
+    var recorder: ((Float, Long, Float, Float, Float) -> Unit)? = null
 
     private val sensorManager = context.getSystemService(Context.SENSOR_SERVICE) as SensorManager
     private val gravitySensor: Sensor? = sensorManager.getDefaultSensor(Sensor.TYPE_GRAVITY)
@@ -61,7 +62,7 @@ class SquatDetector(
                 gravity[0] = event.values[0]; gravity[1] = event.values[1]; gravity[2] = event.values[2]
                 hasGravity = true
             }
-            Sensor.TYPE_LINEAR_ACCELERATION -> if (hasGravity) feed(vertical(event.values), t)
+            Sensor.TYPE_LINEAR_ACCELERATION -> if (hasGravity) feed(event.values[0], event.values[1], event.values[2], t)
             Sensor.TYPE_ACCELEROMETER -> {
                 // Respaldo sin sensores fusionados: gravedad = paso bajo lento del acelerómetro.
                 if (!hasGravity) {
@@ -69,42 +70,33 @@ class SquatDetector(
                     hasGravity = true
                 }
                 for (i in 0..2) gravity[i] += GRAVITY_ALPHA * (event.values[i] - gravity[i])
-                val lin = floatArrayOf(
-                    event.values[0] - gravity[0],
-                    event.values[1] - gravity[1],
-                    event.values[2] - gravity[2],
-                )
-                feed(vertical(lin), t)
+                feed(event.values[0] - gravity[0], event.values[1] - gravity[1], event.values[2] - gravity[2], t)
             }
         }
     }
 
-    private fun feed(raw: Float, t: Long) {
-        recorder?.invoke(raw, t)
-        val squat = counter.process(raw, t)
-        if (squat != null) listener.onSquat(counter.count, squat)
-        listener.onSample(counter.filtered, counter.state)
-    }
-
-    /** Proyección de la aceleración lineal sobre la vertical (positivo = hacia arriba). */
-    private fun vertical(lin: FloatArray): Float {
+    /** Aceleración lineal (lx, ly, lz) → vertical (+ = arriba) y gravedad unitaria → contador. */
+    private fun feed(lx: Float, ly: Float, lz: Float, t: Long) {
         val g = sqrt(gravity[0] * gravity[0] + gravity[1] * gravity[1] + gravity[2] * gravity[2])
-        if (g < 1e-3f) return 0f
-        return (lin[0] * gravity[0] + lin[1] * gravity[1] + lin[2] * gravity[2]) / g
+        if (g < 1e-3f) return
+        val ux = gravity[0] / g
+        val uy = gravity[1] / g
+        val uz = gravity[2] / g
+        val a = lx * ux + ly * uy + lz * uz
+        recorder?.invoke(a, t, ux, uy, uz)
+        val squat = counter.process(a, t, ux, uy, uz)
+        if (squat != null) {
+            if (squat.reject == SquatCounter.Reject.NONE) listener.onSquat(counter.count, squat)
+            else listener.onRejected(squat)
+        }
+        listener.onSample(counter.filtered, counter.state)
     }
 
     companion object {
         private const val GRAVITY_ALPHA = 0.04f
 
         /** Detector con la calibración guardada × exigencia elegida. */
-        fun fromPrefs(context: Context, prefs: AlarmPrefs, listener: Listener): SquatDetector {
-            val c = prefs.calibration
-            val s = prefs.strictness
-            return SquatDetector(
-                context,
-                SquatCounter(c.thresholdDown * s, c.thresholdUp * s, c.minCycleMs, c.maxCycleMs),
-                listener,
-            )
-        }
+        fun fromPrefs(context: Context, prefs: AlarmPrefs, listener: Listener): SquatDetector =
+            SquatDetector(context, prefs.calibration.counter(prefs.strictness), listener)
     }
 }

@@ -156,8 +156,9 @@ fun HomeScreen(resumeTick: Int, onCalibrate: () -> Unit, onTest: () -> Unit, onP
                 val c = st.calibration
                 Text(
                     if (c.calibrated) {
-                        "✓ Preconfigurada con ${c.nSquats} sentadillas · sensibilidad ${pct(c.sens)} · especificidad ${pct(c.spec)}" +
-                            (if (c.valSens >= 0f) "\nValidación: sensibilidad ${pct(c.valSens)} · especificidad ${pct(c.valSpec)}" else "\nSin validar")
+                        "✓ Preconfigurada con ${c.nSquats} sentadillas · sensibilidad ${pct(c.sens)} · especificidad ${pct(c.spec)} (medias posteriores)" +
+                            (if (c.valSens >= 0f) "\nValidación: sensibilidad ${pct(c.valSens)} · especificidad ${pct(c.valSpec)}" else "\nSin validar") +
+                            "\n" + vetoSummary(c)
                     } else {
                         "Sin preconfigurar: se usan valores por defecto. Preconfigura antes de usar la alarma."
                     },

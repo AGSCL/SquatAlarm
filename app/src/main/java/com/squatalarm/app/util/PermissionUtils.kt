@@ -25,6 +25,8 @@ data class PermItem(
 object PermissionUtils {
     const val ID_NOTIFICATIONS = "notifications"
     const val POST_NOTIFICATIONS = "android.permission.POST_NOTIFICATIONS"
+    /** Permisos que Android 13+ bloquea en apps instaladas fuera de una tienda («ajustes restringidos»). */
+    val RESTRICTED = setOf("overlay", "accessibility")
 
     fun items(context: Context): List<PermItem> {
         val pkgUri = Uri.fromParts("package", context.packageName, null)

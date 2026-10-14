@@ -1,5 +1,8 @@
 package com.squatalarm.app.ui
 
+import android.content.Intent
+import android.net.Uri
+import android.provider.Settings
 import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -61,6 +64,30 @@ fun PermissionsScreen(resumeTick: Int, onDone: () -> Unit) {
                             Toast.makeText(context, "Abre Ajustes y busca: ${item.title}", Toast.LENGTH_LONG).show()
                         }
                     }
+                }
+            }
+            if (items.any { !it.granted && it.id in PermissionUtils.RESTRICTED }) {
+                SectionCard("¿Te sale «A la app se le negó el acceso» o «Ajuste restringido»?") {
+                    Text(
+                        "Android bloquea estos permisos en las apps instaladas fuera de una tienda. No hay que pedirle nada a " +
+                            "Google: se desbloquea aquí mismo, una sola vez.\n\n" +
+                            "1. Toca «Conceder» en el permiso bloqueado y cierra el aviso (sin este intento, la opción del paso 2 no aparece).\n" +
+                            "2. Toca «Abrir info de la app» → menú ⋮ (arriba a la derecha) → «Permitir ajustes restringidos» → confirma con tu PIN o huella.\n" +
+                            "3. Vuelve aquí y toca «Conceder» de nuevo en «Mostrar sobre otras apps» y en «Servicio de accesibilidad».",
+                        style = MaterialTheme.typography.bodyMedium,
+                    )
+                    Button(
+                        onClick = {
+                            try {
+                                context.startActivity(
+                                    Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.fromParts("package", context.packageName, null))
+                                )
+                            } catch (e: Exception) {
+                                Toast.makeText(context, "Abre Ajustes → Aplicaciones → Alarma Sentadillas", Toast.LENGTH_LONG).show()
+                            }
+                        },
+                        modifier = Modifier.fillMaxWidth(),
+                    ) { Text("Abrir info de la app") }
                 }
             }
         }
