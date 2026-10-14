@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Alarma Sentadillas</string>
+    <string name="accessibility_label">Alarma Sentadillas: bloqueo de apagado</string>
+    <string name="accessibility_description">Mientras la alarma está sonando, cierra automáticamente el menú de apagado/reinicio para que el teléfono no pueda apagarse sin completar las sentadillas. No lee ni guarda ningún otro contenido de la pantalla y no hace nada el resto del tiempo.</string>
+</resources>
