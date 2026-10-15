@@ -2,7 +2,6 @@ package com.squatalarm.app.block
 
 import android.accessibilityservice.AccessibilityService
 import android.accessibilityservice.AccessibilityServiceInfo
-import android.os.Build
 import android.os.SystemClock
 import android.telecom.TelecomManager
 import android.view.accessibility.AccessibilityEvent
@@ -19,6 +18,7 @@ class PowerMenuBlockerService : AccessibilityService() {
     private var lastBackMs = 0L
     private var lastScanMs = 0L
     private var phonePkgs = emptySet<String>()
+    private val emergencyPkgs = HashSet<String>()
 
     override fun onServiceConnected() {
         super.onServiceConnected()
@@ -45,7 +45,11 @@ class PowerMenuBlockerService : AccessibilityService() {
         if (pkg == packageName) return
         val cls = event.className?.toString() ?: ""
         val stateChange = event.eventType == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED
-        if (stateChange) phonePkgs = phonePackages() // consulta al sistema: solo al cambiar de ventana, no en cada evento
+        if (stateChange) {
+            // Marcador de emergencia del fabricante (p. ej. Samsung no usa com.android.phone): se reconoce por su pantalla.
+            if (cls.contains("emergency", ignoreCase = true)) emergencyPkgs += pkg
+            phonePkgs = phonePackages() // consulta al sistema: solo al cambiar de ventana, no en cada evento
+        }
         if (pkg in phonePkgs || pkg.contains("incallui")) {
             // Marcador o llamada (también la de emergencia): la alarma sigue sonando pero no los tapa.
             AlarmService.dialerPauseUntil = SystemClock.elapsedRealtime() + AlarmService.DIALER_PAUSE_MS
@@ -68,15 +72,11 @@ class PowerMenuBlockerService : AccessibilityService() {
         if (powerMenu) dismissPowerMenu()
     }
 
-    /** Marcador, llamada y marcador de emergencia (AOSP com.android.phone; el de cada fabricante lo da Telecom). */
+    /** Marcador, llamada y marcador de emergencia (AOSP: com.android.phone). */
     private fun phonePackages(): Set<String> = try {
-        val tm = getSystemService(TelecomManager::class.java)
-        setOfNotNull(
-            "com.android.phone", tm?.defaultDialerPackage,
-            if (Build.VERSION.SDK_INT >= 29) tm?.createLaunchEmergencyDialerIntent(null)?.`package` else null,
-        )
+        setOfNotNull("com.android.phone", getSystemService(TelecomManager::class.java)?.defaultDialerPackage) + emergencyPkgs
     } catch (e: Exception) {
-        setOf("com.android.phone")
+        setOf("com.android.phone") + emergencyPkgs
     }
 
     private fun keywordHits(event: AccessibilityEvent): Int {
