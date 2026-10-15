@@ -2,6 +2,7 @@ package com.squatalarm.app.block
 
 import android.accessibilityservice.AccessibilityService
 import android.accessibilityservice.AccessibilityServiceInfo
+import android.os.Build
 import android.os.SystemClock
 import android.telecom.TelecomManager
 import android.view.accessibility.AccessibilityEvent
@@ -17,6 +18,7 @@ class PowerMenuBlockerService : AccessibilityService() {
 
     private var lastBackMs = 0L
     private var lastScanMs = 0L
+    private var phonePkgs = emptySet<String>()
 
     override fun onServiceConnected() {
         super.onServiceConnected()
@@ -41,28 +43,40 @@ class PowerMenuBlockerService : AccessibilityService() {
         if (!AlarmService.isRunning && !AlarmPrefs(this).ringingActive()) return
         val pkg = event.packageName?.toString() ?: ""
         if (pkg == packageName) return
-        if (pkg == "com.android.phone" || pkg == getSystemService(TelecomManager::class.java)?.defaultDialerPackage) {
-            // Marcador o llamada (también la de emergencia): la alarma sigue sonando pero no lo tapa por 2 min.
-            AlarmService.dialerPauseUntil = SystemClock.elapsedRealtime() + DIALER_PAUSE_MS
+        val cls = event.className?.toString() ?: ""
+        val stateChange = event.eventType == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED
+        if (stateChange) phonePkgs = phonePackages() // consulta al sistema: solo al cambiar de ventana, no en cada evento
+        if (pkg in phonePkgs || pkg.contains("incallui")) {
+            // Marcador o llamada (también la de emergencia): la alarma sigue sonando pero no los tapa.
+            AlarmService.dialerPauseUntil = SystemClock.elapsedRealtime() + AlarmService.DIALER_PAUSE_MS
             return
         }
-        // Salió del marcador a otra app: la pausa es solo para llamar, la alarma vuelve al frente.
-        if (event.eventType == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED && pkg != "com.android.systemui") {
+        // Salió del teléfono a otra app (no la barra del sistema ni el teclado): la alarma vuelve al frente.
+        if (stateChange && pkg != "com.android.systemui" && !cls.contains("SoftInputWindow")) {
             AlarmService.dialerPauseUntil = 0L
         }
 
-        val cls = event.className?.toString() ?: ""
         var powerMenu = CLASS_HINTS.any { cls.contains(it, ignoreCase = true) }
 
         if (!powerMenu) {
             val now = SystemClock.elapsedRealtime()
-            val stateChange = event.eventType == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED
             if (stateChange || now - lastScanMs > SCAN_EVERY_MS) {
                 lastScanMs = now
                 powerMenu = keywordHits(event) >= 2 // el menú siempre trae al menos Apagar + Reiniciar
             }
         }
         if (powerMenu) dismissPowerMenu()
+    }
+
+    /** Marcador, llamada y marcador de emergencia (AOSP com.android.phone; el de cada fabricante lo da Telecom). */
+    private fun phonePackages(): Set<String> = try {
+        val tm = getSystemService(TelecomManager::class.java)
+        setOfNotNull(
+            "com.android.phone", tm?.defaultDialerPackage,
+            if (Build.VERSION.SDK_INT >= 29) tm?.createLaunchEmergencyDialerIntent(null)?.`package` else null,
+        )
+    } catch (e: Exception) {
+        setOf("com.android.phone")
     }
 
     private fun keywordHits(event: AccessibilityEvent): Int {
@@ -104,7 +118,6 @@ class PowerMenuBlockerService : AccessibilityService() {
     companion object {
         private const val MAX_NODES = 250
         private const val SCAN_EVERY_MS = 250L
-        private const val DIALER_PAUSE_MS = 120_000L
         private val CLASS_HINTS = listOf("GlobalActions", "PowerMenu", "ShutdownMenu", "PowerOff")
         private val KEYWORDS = listOf(
             "power off", "apagar", "shut down", "shutdown", "switch off", "turn off",

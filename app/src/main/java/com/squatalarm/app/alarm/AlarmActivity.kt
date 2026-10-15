@@ -82,6 +82,7 @@ class AlarmActivity : ComponentActivity(), SquatDetector.Listener {
         super.onStart()
         if (finished) return
         AlarmService.activityVisible = true
+        AlarmService.dialerPauseUntil = 0L // volvió a la alarma: termina la pausa del marcador
         if (sensorText == null) detector?.start()
         startLockTaskSafe()
     }

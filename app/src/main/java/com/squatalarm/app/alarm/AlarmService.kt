@@ -52,9 +52,7 @@ class AlarmService : Service() {
             }
             ensureVolume()
             ensurePlaying()
-            // No tapar una llamada (p. ej. de emergencia) ni el marcador abierto para hacerla.
-            val inCall = getSystemService(AudioManager::class.java).mode != AudioManager.MODE_NORMAL
-            if (!activityVisible && !inCall && SystemClock.elapsedRealtime() > dialerPauseUntil) {
+            if (!activityVisible && !phoneInUse(this@AlarmService)) {
                 wakeScreen()
                 bringToFront(this@AlarmService, repostNotification = true)
             }
@@ -104,7 +102,9 @@ class AlarmService : Service() {
         ensureVolume()
         startPlayer()
         startVibration()
-        bringToFront(this, repostNotification = false)
+        // Si suena en plena llamada no tapa la pantalla de llamada; el vigilante la trae al colgar o al cambiar de app.
+        if (inCall(this)) dialerPauseUntil = SystemClock.elapsedRealtime() + DIALER_PAUSE_MS
+        else bringToFront(this, repostNotification = false)
         handler.postDelayed(watchdog, WATCHDOG_MS)
     }
 
@@ -119,12 +119,8 @@ class AlarmService : Service() {
         focusRequest?.let { try { am.abandonAudioFocusRequest(it) } catch (e: Exception) { } }
         focusRequest = null
         try { vibrator()?.cancel() } catch (e: Exception) { }
-        val prefs = AlarmPrefs(this)
-        val before = prefs.volumeBefore
-        if (before >= 0) {
-            try { am.setStreamVolume(AudioManager.STREAM_ALARM, before, 0) } catch (e: Exception) { }
-            prefs.volumeBefore = -1
-        }
+        restoreVolume(this)
+        dialerPauseUntil = 0L
         wakeLock?.let { if (it.isHeld) it.release() }
         wakeLock = null
         getSystemService(NotificationManager::class.java).cancel(NOTIF_ID_FS)
@@ -239,8 +235,30 @@ class AlarmService : Service() {
 
         @Volatile var isRunning = false
         @Volatile var activityVisible = false
-        /** Hasta cuándo (elapsedRealtime) no traer la alarma al frente: el marcador está abierto (ver PowerMenuBlockerService). */
+        /**
+         * Teléfono en uso (marcador o llamada, también de emergencia): hasta cuándo (elapsedRealtime) no traer la alarma
+         * al frente; 0 = no. Lo marca PowerMenuBlockerService y se borra al abrir otra app o al volver a la alarma.
+         */
         @Volatile var dialerPauseUntil = 0L
+        const val DIALER_PAUSE_MS = 120_000L
+
+        private fun inCall(context: Context) =
+            context.getSystemService(AudioManager::class.java).mode != AudioManager.MODE_NORMAL
+
+        /** Con el teléfono en uso, una llamada en curso no se tapa nunca; el marcador, por [DIALER_PAUSE_MS]. */
+        private fun phoneInUse(context: Context): Boolean {
+            val until = dialerPauseUntil
+            return until != 0L && (inCall(context) || SystemClock.elapsedRealtime() < until)
+        }
+
+        /** Vuelve al volumen de alarma previo; también desde BootReceiver cuando la alarma no se reanuda. */
+        fun restoreVolume(context: Context) {
+            val prefs = AlarmPrefs(context)
+            val before = prefs.volumeBefore
+            if (before < 0) return
+            try { context.getSystemService(AudioManager::class.java).setStreamVolume(AudioManager.STREAM_ALARM, before, 0) } catch (e: Exception) { }
+            prefs.volumeBefore = -1
+        }
 
         fun start(context: Context) {
             ContextCompat.startForegroundService(context, Intent(context, AlarmService::class.java))

@@ -12,6 +12,7 @@ class BootReceiver : BroadcastReceiver() {
             AlarmScheduler.ringIn(context, 2_000L, prefs.isTestRing)
         } else {
             prefs.isRinging = false
+            AlarmService.restoreVolume(context) // sonaba al reiniciarse y ya venció: el volumen quedó al máximo
         }
         AlarmScheduler.schedule(context)
     }
