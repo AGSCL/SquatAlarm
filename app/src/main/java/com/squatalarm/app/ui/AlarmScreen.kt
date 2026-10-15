@@ -39,6 +39,8 @@ fun AlarmScreen(
     thresholdUp: Float,
     sensorAvailable: Boolean,
     rejection: String,
+    /** Misión «ir hasta el sensor»: texto de la notificación esperada; null = sentadillas. */
+    sensorText: String?,
     showEscape: Boolean,
     onEscape: () -> Unit,
 ) {
@@ -59,49 +61,86 @@ fun AlarmScreen(
         ) {
             Text(timeText, fontSize = 64.sp, color = Color.White, fontWeight = FontWeight.Light)
 
-            Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                Text(
-                    "Haz $required sentadillas para apagar la alarma",
-                    color = Color.White, fontSize = 20.sp, textAlign = TextAlign.Center,
-                )
-                Spacer(Modifier.height(16.dp))
-                Text("$done", fontSize = 120.sp, color = GREEN, fontWeight = FontWeight.Bold)
-                Text("de $required", color = Color.LightGray, fontSize = 22.sp)
-                Spacer(Modifier.height(24.dp))
-                LinearProgressIndicator(
-                    progress = { done.toFloat() / required },
-                    modifier = Modifier.fillMaxWidth().height(10.dp),
-                    color = GREEN,
-                    trackColor = Color.DarkGray,
-                )
-                Spacer(Modifier.height(16.dp))
-                LiveBar(aVert, thresholdDown, thresholdUp)
-                if (rejection.isNotEmpty()) {
+            if (sensorText != null) {
+                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                    Text("🚶", fontSize = 96.sp)
+                    Text("Camina hasta el sensor", color = Color.White, fontSize = 26.sp, fontWeight = FontWeight.Bold)
                     Spacer(Modifier.height(12.dp))
-                    Text(rejection, color = RED, fontSize = 16.sp, textAlign = TextAlign.Center)
-                }
-            }
-
-            Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                Text(
-                    "Sostén el teléfono contra el pecho con ambas manos y haz sentadillas completas, igual que en la calibración.",
-                    color = Color.LightGray, fontSize = 15.sp, textAlign = TextAlign.Center,
-                )
-                Spacer(Modifier.height(12.dp))
-                if (!sensorAvailable) {
-                    Text("⚠ Este teléfono no tiene acelerómetro.", color = RED, textAlign = TextAlign.Center)
-                }
-                if (showEscape) {
-                    OutlinedButton(onClick = onEscape) {
-                        Text(if (sensorAvailable) "Apagar (modo prueba)" else "Apagar")
-                    }
-                } else {
                     Text(
-                        "No se puede silenciar ni apagar hasta completar las sentadillas.",
-                        color = Color.Gray, fontSize = 13.sp, textAlign = TextAlign.Center,
+                        "La alarma se apaga cuando llegue una notificación nueva con «$sensorText».",
+                        color = Color.LightGray, fontSize = 18.sp, textAlign = TextAlign.Center,
                     )
                 }
+                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                    if (showEscape) {
+                        OutlinedButton(onClick = onEscape) { Text("Apagar (modo prueba)") }
+                    } else {
+                        Text(
+                            "No se puede silenciar ni apagar hasta que el sensor te detecte.",
+                            color = Color.Gray, fontSize = 13.sp, textAlign = TextAlign.Center,
+                        )
+                    }
+                }
+            } else {
+                SquatSection(required, done, aVert, thresholdDown, thresholdUp, sensorAvailable, rejection, showEscape, onEscape)
             }
+        }
+    }
+}
+
+@Composable
+private fun SquatSection(
+    required: Int,
+    done: Int,
+    aVert: Float,
+    thresholdDown: Float,
+    thresholdUp: Float,
+    sensorAvailable: Boolean,
+    rejection: String,
+    showEscape: Boolean,
+    onEscape: () -> Unit,
+) {
+    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+        Text(
+            "Haz $required sentadillas para apagar la alarma",
+            color = Color.White, fontSize = 20.sp, textAlign = TextAlign.Center,
+        )
+        Spacer(Modifier.height(16.dp))
+        Text("$done", fontSize = 120.sp, color = GREEN, fontWeight = FontWeight.Bold)
+        Text("de $required", color = Color.LightGray, fontSize = 22.sp)
+        Spacer(Modifier.height(24.dp))
+        LinearProgressIndicator(
+            progress = { done.toFloat() / required },
+            modifier = Modifier.fillMaxWidth().height(10.dp),
+            color = GREEN,
+            trackColor = Color.DarkGray,
+        )
+        Spacer(Modifier.height(16.dp))
+        LiveBar(aVert, thresholdDown, thresholdUp)
+        if (rejection.isNotEmpty()) {
+            Spacer(Modifier.height(12.dp))
+            Text(rejection, color = RED, fontSize = 16.sp, textAlign = TextAlign.Center)
+        }
+    }
+
+    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+        Text(
+            "Sostén el teléfono contra el pecho con ambas manos y haz sentadillas completas, igual que en la calibración.",
+            color = Color.LightGray, fontSize = 15.sp, textAlign = TextAlign.Center,
+        )
+        Spacer(Modifier.height(12.dp))
+        if (!sensorAvailable) {
+            Text("⚠ Este teléfono no tiene acelerómetro.", color = RED, textAlign = TextAlign.Center)
+        }
+        if (showEscape) {
+            OutlinedButton(onClick = onEscape) {
+                Text(if (sensorAvailable) "Apagar (modo prueba)" else "Apagar")
+            }
+        } else {
+            Text(
+                "No se puede silenciar ni apagar hasta completar las sentadillas.",
+                color = Color.Gray, fontSize = 13.sp, textAlign = TextAlign.Center,
+            )
         }
     }
 }

@@ -12,8 +12,9 @@ android {
         applicationId = "com.squatalarm.app"
         minSdk = 26
         targetSdk = 35
+        // versionCode fijo: cualquier build se instala encima de otra sin desinstalar (y sin perder parámetros).
         versionCode = 1
-        versionName = "1.0"
+        versionName = "1.0-build" + (System.getenv("GITHUB_RUN_NUMBER") ?: "local")
     }
 
     // Una sola firma (clave personal incluida en el repo) para que cualquier build —GitHub Actions,

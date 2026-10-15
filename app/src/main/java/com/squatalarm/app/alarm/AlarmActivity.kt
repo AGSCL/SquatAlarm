@@ -10,6 +10,7 @@ import androidx.activity.addCallback
 import androidx.activity.compose.setContent
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.darkColorScheme
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
@@ -17,10 +18,11 @@ import com.squatalarm.app.squat.SquatCounter
 import com.squatalarm.app.squat.SquatDetector
 import com.squatalarm.app.ui.AlarmScreen
 import com.squatalarm.app.ui.rejectText
+import kotlinx.coroutines.delay
 
 /**
  * Pantalla de alarma: se muestra sobre el bloqueo, fija la pantalla (bloquea Inicio/Recientes),
- * ignora Atrás y los botones de volumen, y solo se cierra al completar las sentadillas.
+ * ignora Atrás y los botones de volumen, y solo se cierra al completar la misión (sentadillas o sensor).
  */
 class AlarmActivity : ComponentActivity(), SquatDetector.Listener {
 
@@ -28,6 +30,8 @@ class AlarmActivity : ComponentActivity(), SquatDetector.Listener {
     private var detector: SquatDetector? = null
     private var required = 10
     private var finished = false
+    /** Texto de la notificación esperada si la misión es ir hasta el sensor; null = sentadillas. */
+    private var sensorText: String? = null
     private val done = mutableIntStateOf(0)
     private val aVert = mutableFloatStateOf(0f)
     private val rejection = mutableStateOf("")
@@ -42,12 +46,20 @@ class AlarmActivity : ComponentActivity(), SquatDetector.Listener {
         }
         setupWindow()
         required = prefs.squatsRequired
+        sensorText = if (prefs.mission == AlarmPrefs.MISSION_SENSOR) prefs.sensorText else null
         val det = SquatDetector.fromPrefs(this, prefs, this)
         detector = det
         onBackPressedDispatcher.addCallback(this) { /* Atrás bloqueado */ }
         if (!AlarmService.isRunning) AlarmService.start(this)
-        val showEscape = prefs.isTestRing || !det.isAvailable
+        val showEscape = prefs.isTestRing || (sensorText == null && !det.isAvailable)
         setContent {
+            // Se cierra sola si la alarma se apagó por otra vía (sensor o apagado de seguridad).
+            LaunchedEffect(Unit) {
+                while (!finished) {
+                    delay(1000L)
+                    if (!prefs.isRinging && !finished) dismiss()
+                }
+            }
             MaterialTheme(colorScheme = darkColorScheme()) {
                 AlarmScreen(
                     required = required,
@@ -57,6 +69,7 @@ class AlarmActivity : ComponentActivity(), SquatDetector.Listener {
                     thresholdUp = det.counter.thresholdUp,
                     sensorAvailable = det.isAvailable,
                     rejection = rejection.value,
+                    sensorText = sensorText,
                     showEscape = showEscape,
                     onEscape = { dismiss() },
                 )
@@ -68,7 +81,7 @@ class AlarmActivity : ComponentActivity(), SquatDetector.Listener {
         super.onStart()
         if (finished) return
         AlarmService.activityVisible = true
-        detector?.start()
+        if (sensorText == null) detector?.start()
         startLockTaskSafe()
     }
 

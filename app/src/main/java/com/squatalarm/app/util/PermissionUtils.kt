@@ -10,7 +10,9 @@ import android.net.Uri
 import android.os.Build
 import android.os.PowerManager
 import android.provider.Settings
+import androidx.core.app.NotificationManagerCompat
 import androidx.core.content.ContextCompat
+import com.squatalarm.app.alarm.AlarmPrefs
 import com.squatalarm.app.block.PowerMenuBlockerService
 
 /** Un permiso o ajuste que la alarma necesita; `intent == null` → permiso en tiempo de ejecución. */
@@ -26,7 +28,7 @@ object PermissionUtils {
     const val ID_NOTIFICATIONS = "notifications"
     const val POST_NOTIFICATIONS = "android.permission.POST_NOTIFICATIONS"
     /** Permisos que Android 13+ bloquea en apps instaladas fuera de una tienda («ajustes restringidos»). */
-    val RESTRICTED = setOf("overlay", "accessibility")
+    val RESTRICTED = setOf("overlay", "accessibility", "listener")
 
     fun items(context: Context): List<PermItem> {
         val pkgUri = Uri.fromParts("package", context.packageName, null)
@@ -67,6 +69,14 @@ object PermissionUtils {
             accessibilityEnabled(context),
             Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS)
         )
+        if (AlarmPrefs(context).mission == AlarmPrefs.MISSION_SENSOR) {
+            list += PermItem(
+                "listener", "Acceso a notificaciones",
+                "Para saber cuándo el sensor detecta movimiento. Solo se mira la notificación del sensor elegido.",
+                NotificationManagerCompat.getEnabledListenerPackages(context).contains(context.packageName),
+                Intent(Settings.ACTION_NOTIFICATION_LISTENER_SETTINGS)
+            )
+        }
         list += PermItem(
             "battery", "Sin restricción de batería",
             "Evita que el sistema detenga la alarma.",

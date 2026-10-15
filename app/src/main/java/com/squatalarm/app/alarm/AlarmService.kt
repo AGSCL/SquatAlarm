@@ -261,7 +261,9 @@ class AlarmService : Service() {
                 .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP)
 
         private fun buildNotification(context: Context): Notification {
-            val required = AlarmPrefs(context).squatsRequired
+            val prefs = AlarmPrefs(context)
+            val task = if (prefs.mission == AlarmPrefs.MISSION_SENSOR) "Camina hasta el sensor para apagarla"
+            else "Haz ${prefs.squatsRequired} sentadillas para apagarla"
             val pi = PendingIntent.getActivity(
                 context, 7, alarmIntent(context),
                 PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
@@ -269,7 +271,7 @@ class AlarmService : Service() {
             return NotificationCompat.Builder(context, CHANNEL_ID)
                 .setSmallIcon(R.drawable.ic_alarm)
                 .setContentTitle("¡Alarma sonando!")
-                .setContentText("Haz $required sentadillas para apagarla")
+                .setContentText(task)
                 .setPriority(NotificationCompat.PRIORITY_MAX)
                 .setCategory(NotificationCompat.CATEGORY_ALARM)
                 .setOngoing(true)

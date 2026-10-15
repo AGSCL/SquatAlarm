@@ -73,7 +73,7 @@ fun PermissionsScreen(resumeTick: Int, onDone: () -> Unit) {
                             "Google: se desbloquea aquí mismo, una sola vez.\n\n" +
                             "1. Toca «Conceder» en el permiso bloqueado y cierra el aviso (sin este intento, la opción del paso 2 no aparece).\n" +
                             "2. Toca «Abrir info de la app» → menú ⋮ (arriba a la derecha) → «Permitir ajustes restringidos» → confirma con tu PIN o huella.\n" +
-                            "3. Vuelve aquí y toca «Conceder» de nuevo en «Mostrar sobre otras apps» y en «Servicio de accesibilidad».",
+                            "3. Vuelve aquí y toca «Conceder» de nuevo en cada permiso bloqueado.",
                         style = MaterialTheme.typography.bodyMedium,
                     )
                     Button(

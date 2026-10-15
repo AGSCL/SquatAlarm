@@ -41,6 +41,39 @@ class AlarmPrefs(context: Context) {
         get() = sp.getInt("safety_timeout_min", DEFAULT_SAFETY_TIMEOUT_MIN)
         set(v) = sp.edit().putInt("safety_timeout_min", v).apply()
 
+    /** Cómo se apaga: [MISSION_SQUATS] o [MISSION_SENSOR] (ir hasta un sensor que manda una notificación). */
+    var mission: Int
+        get() = sp.getInt("mission", MISSION_SQUATS)
+        set(v) = sp.edit().putInt("mission", v).apply()
+
+    /** Paquete de la app del sensor (p. ej. SwitchBot) y texto que debe traer su notificación. */
+    var sensorPackage: String
+        get() = sp.getString("sensor_package", "") ?: ""
+        set(v) = sp.edit().putString("sensor_package", v).apply()
+
+    var sensorText: String
+        get() = sp.getString("sensor_text", "") ?: ""
+        set(v) = sp.edit().putString("sensor_text", v).apply()
+
+    /** Respaldo de todos los parámetros (no el estado de una alarma sonando). */
+    fun exportText(): String = PrefsCodec.encode(sp.all)
+
+    /** Lanza IllegalArgumentException si el archivo no es válido; en ese caso no cambia nada. */
+    fun importText(text: String) {
+        val values = PrefsCodec.decode(text)
+        val e = sp.edit()
+        for ((k, v) in values) {
+            when (v) {
+                is Boolean -> e.putBoolean(k, v)
+                is Int -> e.putInt(k, v)
+                is Long -> e.putLong(k, v)
+                is Float -> e.putFloat(k, v)
+                is String -> e.putString(k, v)
+            }
+        }
+        e.apply()
+    }
+
     var isRinging: Boolean
         get() = sp.getBoolean("is_ringing", false)
         set(v) = sp.edit().putBoolean("is_ringing", v).apply()
@@ -92,5 +125,7 @@ class AlarmPrefs(context: Context) {
 
     companion object {
         const val DEFAULT_SAFETY_TIMEOUT_MIN = 60
+        const val MISSION_SQUATS = 0
+        const val MISSION_SENSOR = 1
     }
 }

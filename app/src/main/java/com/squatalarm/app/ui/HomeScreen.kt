@@ -2,6 +2,8 @@ package com.squatalarm.app.ui
 
 import android.app.TimePickerDialog
 import android.widget.Toast
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -18,17 +20,21 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Slider
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableLongStateOf
+import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -38,6 +44,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import com.squatalarm.app.alarm.AlarmPrefs
 import com.squatalarm.app.alarm.AlarmScheduler
+import com.squatalarm.app.alarm.SensorNotificationListener
 import com.squatalarm.app.util.PermissionUtils
 import java.text.SimpleDateFormat
 import java.util.Calendar
@@ -56,6 +63,10 @@ private class HomeState(prefs: AlarmPrefs) {
     var calibration by mutableStateOf(prefs.calibration)
     var nextAt by mutableLongStateOf(prefs.scheduledAt)
     var missing by mutableIntStateOf(0)
+    var mission by mutableIntStateOf(prefs.mission)
+    var sensorPackage by mutableStateOf(prefs.sensorPackage)
+    var sensorText by mutableStateOf(prefs.sensorText)
+    var picking by mutableStateOf(false)
 
     fun reload(prefs: AlarmPrefs) {
         enabled = prefs.enabled
@@ -69,9 +80,10 @@ private class HomeState(prefs: AlarmPrefs) {
 fun HomeScreen(resumeTick: Int, onCalibrate: () -> Unit, onTest: () -> Unit, onPermissions: () -> Unit) {
     val context = LocalContext.current
     val prefs = remember { AlarmPrefs(context) }
-    val st = remember { HomeState(prefs) }
+    var reloadKey by remember { mutableIntStateOf(0) }
+    val st = remember(reloadKey) { HomeState(prefs) }
 
-    LaunchedEffect(resumeTick) {
+    LaunchedEffect(resumeTick, reloadKey) {
         st.reload(prefs)
         st.missing = PermissionUtils.missingCount(context)
     }
@@ -84,8 +96,38 @@ fun HomeScreen(resumeTick: Int, onCalibrate: () -> Unit, onTest: () -> Unit, onP
         prefs.enabled = st.enabled
         prefs.strictness = st.strictness
         prefs.safetyTimeoutMin = st.safetyMin
+        prefs.mission = st.mission
         AlarmScheduler.schedule(context)
         st.nextAt = prefs.scheduledAt
+        st.missing = PermissionUtils.missingCount(context)
+    }
+
+    fun toast(msg: String) = Toast.makeText(context, msg, Toast.LENGTH_LONG).show()
+
+    val exportLauncher = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("text/plain")) { uri ->
+        if (uri != null) {
+            val ok = try {
+                context.contentResolver.openOutputStream(uri)?.use { it.write(prefs.exportText().toByteArray()) } != null
+            } catch (e: Exception) {
+                false
+            }
+            toast(if (ok) "Parámetros exportados" else "No se pudo exportar")
+        }
+    }
+    val importLauncher = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+        if (uri != null) {
+            toast(
+                try {
+                    val text = context.contentResolver.openInputStream(uri)?.use { it.readBytes().decodeToString() }.orEmpty()
+                    prefs.importText(text)
+                    AlarmScheduler.schedule(context)
+                    reloadKey++
+                    "Parámetros importados"
+                } catch (e: Exception) {
+                    "Archivo no válido: ${e.message}"
+                }
+            )
+        }
     }
 
     val timeText = String.format(Locale.US, "%02d:%02d", st.hour, st.minute)
@@ -105,6 +147,10 @@ fun HomeScreen(resumeTick: Int, onCalibrate: () -> Unit, onTest: () -> Unit, onP
             verticalArrangement = Arrangement.spacedBy(16.dp),
         ) {
             Text("Alarma Sentadillas", style = MaterialTheme.typography.headlineMedium)
+            val version = remember {
+                try { context.packageManager.getPackageInfo(context.packageName, 0).versionName } catch (e: Exception) { null }
+            }
+            Text("Versión ${version ?: "?"}", style = MaterialTheme.typography.bodySmall)
 
             SectionCard("Alarma") {
                 Row(verticalAlignment = Alignment.CenterVertically) {
@@ -141,7 +187,7 @@ fun HomeScreen(resumeTick: Int, onCalibrate: () -> Unit, onTest: () -> Unit, onP
                     steps = 34,
                 )
                 Text(
-                    "Si la detección fallara, la alarma se apaga sola tras ese tiempo. Es la única salida sin sentadillas.",
+                    "Si la detección fallara, la alarma se apaga sola tras ese tiempo. Es la única salida sin cumplir la misión.",
                     style = MaterialTheme.typography.bodySmall,
                 )
                 if (st.missing > 0) {
@@ -149,6 +195,46 @@ fun HomeScreen(resumeTick: Int, onCalibrate: () -> Unit, onTest: () -> Unit, onP
                         "⚠ Faltan ${st.missing} permisos: la alarma podría no sonar o podría apagarse el teléfono.",
                         color = MaterialTheme.colorScheme.error,
                     )
+                }
+            }
+
+            SectionCard("Para apagar la alarma") {
+                MissionOption("Hacer sentadillas", st.mission == AlarmPrefs.MISSION_SQUATS) {
+                    st.mission = AlarmPrefs.MISSION_SQUATS; save()
+                }
+                MissionOption("Caminar hasta un sensor de movimiento", st.mission == AlarmPrefs.MISSION_SENSOR) {
+                    st.mission = AlarmPrefs.MISSION_SENSOR; save()
+                }
+                if (st.mission == AlarmPrefs.MISSION_SENSOR) {
+                    Text(
+                        "Se apaga cuando llega una notificación nueva del sensor (p. ej. SwitchBot «Movimiento detectado»). " +
+                            "La app la lee con «Acceso a notificaciones»; no hace capturas de pantalla.",
+                        style = MaterialTheme.typography.bodySmall,
+                    )
+                    if (st.sensorPackage.isNotEmpty()) {
+                        Text("App del sensor: ${st.sensorPackage}", style = MaterialTheme.typography.bodySmall)
+                        OutlinedTextField(
+                            value = st.sensorText,
+                            onValueChange = { st.sensorText = it; prefs.sensorText = it },
+                            label = { Text("Texto que debe traer la notificación") },
+                            singleLine = true,
+                            modifier = Modifier.fillMaxWidth(),
+                        )
+                    } else {
+                        Text("Aún no eliges la notificación del sensor.", color = MaterialTheme.colorScheme.error)
+                    }
+                    OutlinedButton(onClick = { st.picking = !st.picking }, modifier = Modifier.fillMaxWidth()) {
+                        Text(if (st.picking) "Cancelar" else "Elegir la notificación del sensor")
+                    }
+                    if (st.picking) {
+                        SensorPicker { s ->
+                            st.sensorPackage = s.pkg
+                            st.sensorText = s.title.ifBlank { s.text }
+                            prefs.sensorPackage = st.sensorPackage
+                            prefs.sensorText = st.sensorText
+                            st.picking = false
+                        }
+                    }
                 }
             }
 
@@ -177,6 +263,22 @@ fun HomeScreen(resumeTick: Int, onCalibrate: () -> Unit, onTest: () -> Unit, onP
                 )
             }
 
+            SectionCard("Respaldo de parámetros") {
+                Text(
+                    "Al instalar una versión nueva encima de la anterior, los parámetros se conservan. " +
+                        "Exporta un respaldo por si desinstalas la app o cambias de teléfono.",
+                    style = MaterialTheme.typography.bodySmall,
+                )
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    OutlinedButton(onClick = { exportLauncher.launch("squatalarm-parametros.txt") }, modifier = Modifier.weight(1f)) {
+                        Text("Exportar")
+                    }
+                    OutlinedButton(onClick = { importLauncher.launch(arrayOf("text/*")) }, modifier = Modifier.weight(1f)) {
+                        Text("Importar")
+                    }
+                }
+            }
+
             SectionCard("Permisos") {
                 Text(if (st.missing == 0) "✓ Todo concedido" else "Faltan ${st.missing} permisos")
                 Button(onClick = onPermissions, modifier = Modifier.fillMaxWidth()) { Text("Revisar permisos") }
@@ -196,6 +298,44 @@ fun HomeScreen(resumeTick: Int, onCalibrate: () -> Unit, onTest: () -> Unit, onP
                     modifier = Modifier.fillMaxWidth(),
                 ) { Text("Probar alarma en 10 s") }
             }
+        }
+    }
+}
+
+@Composable
+private fun MissionOption(label: String, selected: Boolean, onSelect: () -> Unit) {
+    Row(
+        Modifier.fillMaxWidth().clickable(onClick = onSelect),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        RadioButton(selected = selected, onClick = onSelect)
+        Text(label)
+    }
+}
+
+/** Lista las notificaciones visibles y las que van llegando; tocar una la elige como la del sensor. */
+@Composable
+private fun SensorPicker(onPick: (SensorNotificationListener.Seen) -> Unit) {
+    val items = remember { mutableStateListOf<SensorNotificationListener.Seen>().apply { addAll(SensorNotificationListener.current()) } }
+    DisposableEffect(Unit) {
+        SensorNotificationListener.picker = { s -> items.add(0, s) }
+        onDispose { SensorNotificationListener.picker = null }
+    }
+    if (SensorNotificationListener.instance == null) {
+        Text(
+            "⚠ Primero concede «Acceso a notificaciones» en Revisar permisos y vuelve aquí.",
+            color = MaterialTheme.colorScheme.error,
+        )
+        return
+    }
+    Text(
+        "Toca la notificación del sensor. Si no está en la lista, pasa frente al sensor: la nueva aparecerá aquí.",
+        style = MaterialTheme.typography.bodySmall,
+    )
+    items.distinctBy { Triple(it.pkg, it.title, it.text) }.take(12).forEach { s ->
+        Column(Modifier.fillMaxWidth().clickable { onPick(s) }.padding(vertical = 6.dp)) {
+            Text(s.title.ifBlank { s.text }, style = MaterialTheme.typography.bodyMedium)
+            Text("${s.pkg} · ${s.text}", style = MaterialTheme.typography.bodySmall)
         }
     }
 }

@@ -155,5 +155,34 @@ val hiS = tuner.best(0.95).second
 val loS = tuner.best(0.05).second
 require(hiS.sens >= loS.sens - 1e-12 && loS.spec >= hiS.spec - 1e-12) { "monotonía del peso" }
 
+// 8) Respaldo de parámetros: ida y vuelta con tipos exactos; archivos ajenos o mal editados se rechazan
+val prefsIn = mapOf<String, Any>(
+    "hour" to 7, "enabled" to true, "strictness" to 1.0f, "cal_thr_down" to 2.7f, "cal_min_cycle" to 300L,
+    "cal_max_peak" to SquatCounter.NO_LIMIT, "sensor_package" to "com.theswitchbot.switchbot",
+    "sensor_text" to "sensor espacios: Movimiento detectado", "mission" to 1,
+    "is_ringing" to true, "ringing_since" to 123L, // estado de una alarma sonando: no se exporta
+)
+val file = PrefsCodec.encode(prefsIn)
+val back = PrefsCodec.decode(file)
+require(back == prefsIn - "is_ringing" - "ringing_since") { "ida y vuelta: $back" }
+require(back["cal_min_cycle"] is Long && back["cal_thr_down"] is Float && back["hour"] is Int) { "tipos exactos" }
+fun rejects(text: String) = try { PrefsCodec.decode(text); false } catch (e: IllegalArgumentException) { true }
+require(rejects("hola\nhour=7")) { "sin encabezado → rechazar" }
+require(rejects(PrefsCodec.HEADER + "\nhour=siete")) { "tipo inválido → rechazar (evita que la app se caiga al leerlo)" }
+require(rejects(PrefsCodec.HEADER + "\ncal_thr_down=NaN")) { "NaN → rechazar" }
+require(rejects(PrefsCodec.HEADER + "\nsin_signo_igual")) { "línea sin = → rechazar" }
+require(PrefsCodec.decode(PrefsCodec.HEADER + "\nclave_de_otra_version=1\n\n# comentario\nhour=8") == mapOf("hour" to 8)) { "ignora claves desconocidas" }
+require(PrefsCodec.decode(PrefsCodec.HEADER + "\nsensor_text=a=b").getValue("sensor_text") == "a=b") { "texto con =" }
+
+// 9) Regla del sensor: solo una notificación NUEVA, de esa app y con ese texto
+val pkg = "com.theswitchbot.switchbot"
+val want = "sensor espacios: Movimiento detectado"
+require(SensorMatch.matches(pkg, "sensor espacios: Movimiento detectado", "Pulse para ver los detalles.", 2000L, pkg, want, 1000L))
+require(SensorMatch.matches(pkg, "SENSOR ESPACIOS: movimiento detectado", "", 2000L, pkg, " $want ", 1000L)) { "sin distinguir mayúsculas ni espacios" }
+require(!SensorMatch.matches(pkg, want, "", 999L, pkg, want, 1000L)) { "anterior al inicio de la alarma → no" }
+require(!SensorMatch.matches("com.whatsapp", want, "", 2000L, pkg, want, 1000L)) { "otra app con el mismo texto → no" }
+require(!SensorMatch.matches(pkg, "sensor pieza: Movimiento detectado", "", 2000L, pkg, want, 1000L)) { "otro sensor → no" }
+require(!SensorMatch.matches(pkg, want, "", 2000L, pkg, "  ", 1000L) && !SensorMatch.matches(pkg, want, "", 2000L, "", want, 1000L)) { "sin configurar → nunca" }
+
 println("CORE OK")
 tasks.register("coreTest") { doLast { println("coreTest: todos los asserts pasaron") } }

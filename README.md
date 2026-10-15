@@ -15,13 +15,40 @@ se instala encima del anterior sin desinstalar. Requisitos: Android 8.0+ (API 26
 
 ## Primer uso
 
-1. **Permisos** → concede los 6. Si sale «A la app se le negó el acceso», ver [Permisos bloqueados](#permisos-bloqueados-y-play-protect).
+1. **Permisos** → concede todos (6; 7 con la misión del sensor). Si sale «A la app se le negó el acceso», ver [Permisos bloqueados](#permisos-bloqueados-y-play-protect).
 2. **Preconfigurar** (unos 8–10 min, ver abajo). Se guarda sola al terminar.
 3. **Probar detección**: cada sentadilla suma 1. Cuando un movimiento no cuenta, la pantalla dice por qué
    (p. ej. «el torso no se inclinó (¿solo brazos?)»).
 4. **Probar alarma en 10 s**, bloquear el teléfono y esperar. En modo prueba hay botón para apagarla; en la real no.
 5. Hora, días, número de sentadillas y **apagado de seguridad** (minutos tras los que se apaga sola si la detección
    fallara; es la única salida sin sentadillas). Activar el interruptor.
+
+## Misión alternativa: caminar hasta un sensor de movimiento
+
+En **Para apagar la alarma**, elige «Caminar hasta un sensor de movimiento». La alarma se apaga cuando llega una
+notificación **nueva**, posterior al inicio de la alarma, de la app del sensor y con el texto elegido. Por ejemplo,
+SwitchBot «sensor espacios: Movimiento detectado» si el sensor está en la cocina.
+
+1. **Revisar permisos** → concede **Acceso a notificaciones**. Si sale «Ajuste restringido», usa el mismo
+   procedimiento de abajo.
+2. **Elegir la notificación del sensor**: aparecen las notificaciones visibles. Toca la del sensor; si no está, pasa
+   frente a él y la nueva aparecerá en la lista. Se guardan la app y el texto, y el texto se puede editar. Por
+   ejemplo, «Movimiento detectado» acepta cualquier sensor de esa app, mientras que «sensor espacios» acepta solo
+   ese.
+3. **Probar alarma en 10 s** y camina hasta el sensor.
+
+La app lee la notificación con el permiso estándar de Android (`NotificationListenerService`). No captura la
+pantalla y no guarda ni envía otras notificaciones; además, la app no tiene permiso de Internet. Limitaciones:
+depende de que el sensor y su app avisen (internet, hub y nube del fabricante); si otra persona pasa frente al
+sensor, también la apaga; si el sensor ya estaba en estado «movimiento», puede no avisar de nuevo hasta que se
+despeje. Si no llega nada, actúa el apagado de seguridad.
+
+## Respaldo de parámetros
+
+Al instalar una versión nueva **encima** de la anterior (misma firma), los parámetros se conservan; solo se pierden
+al desinstalar. **Respaldo de parámetros → Exportar** guarda un archivo de texto (`squatalarm-parametros.txt`) en la
+carpeta que elijas (Descargas, Drive…), con la preconfiguración, la alarma, la misión y el sensor. **Importar** lo
+restaura. Al importar, cada valor se valida con su tipo; si el archivo no es válido, no se cambia nada.
 
 ## Preconfiguración bayesiana
 
@@ -99,7 +126,7 @@ Son dos bloqueos distintos.
 
 ### 1. «A la app se le negó el acceso» / «Ajuste restringido» (Android 13+)
 
-Android bloquea **Servicio de accesibilidad** y **Mostrar sobre otras apps** (y en Android 15, otros más) en las apps
+Android bloquea **Servicio de accesibilidad**, **Mostrar sobre otras apps** y **Acceso a notificaciones** (y en Android 15, otros más) en las apps
 instaladas desde un APK descargado. **No lo bloquea Google Play y no hay que pedirle nada a nadie**: se desbloquea en
 el teléfono, una vez por app.
 
@@ -156,7 +183,8 @@ Requiere un teléfono sin cuentas configuradas y ADB:
 
 ## Pruebas y herramientas
 
-- `core-check/run.sh`: compila el núcleo (contador, vetos, motor bayesiano, Beta) con el Kotlin embebido de Gradle y
+- `core-check/run.sh`: compila el código puro (contador, vetos, motor bayesiano, Beta, archivo de respaldo, regla
+  del sensor) con el Kotlin embebido de Gradle y
   corre las pruebas con señales sintéticas. Verifica que los vetos atrapan los brazos, que los cuantiles coinciden con
   SciPy, que la actualización incremental coincide con la evaluación desde cero y que el peso actúa en la dirección
   correcta. Solo necesita `gradle`.
