@@ -25,6 +25,7 @@ import android.provider.Settings
 import androidx.core.app.NotificationCompat
 import androidx.core.content.ContextCompat
 import com.squatalarm.app.R
+import com.squatalarm.app.util.PermissionUtils
 
 /**
  * Servicio en primer plano que hace sonar la alarma a volumen máximo, vibra, mantiene la
@@ -262,7 +263,7 @@ class AlarmService : Service() {
 
         private fun buildNotification(context: Context): Notification {
             val prefs = AlarmPrefs(context)
-            val task = if (prefs.mission == AlarmPrefs.MISSION_SENSOR) "Camina hasta el sensor para apagarla"
+            val task = if (PermissionUtils.sensorMissionReady(context)) "Camina hasta el sensor para apagarla"
             else "Haz ${prefs.squatsRequired} sentadillas para apagarla"
             val pi = PendingIntent.getActivity(
                 context, 7, alarmIntent(context),

@@ -24,6 +24,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import com.squatalarm.app.alarm.AlarmPrefs
@@ -64,9 +65,14 @@ fun TestScreen(onDone: () -> Unit) {
             }
         })
     }
+    val view = LocalView.current
     DisposableEffect(Unit) {
+        view.keepScreenOn = true // con el teléfono contra el pecho, la pantalla se apagaría a media prueba
         detector.start()
-        onDispose { detector.stop() }
+        onDispose {
+            view.keepScreenOn = false
+            detector.stop()
+        }
     }
 
     fun applyStrictness(s: Float) {
@@ -104,6 +110,7 @@ fun TestScreen(onDone: () -> Unit) {
                 value = st.strictness,
                 onValueChange = { applyStrictness((it * 10f).roundToInt() / 10f) },
                 valueRange = 0.5f..1.8f,
+                modifier = Modifier.labeled("Exigencia del movimiento", "×%.1f".format(st.strictness)),
             )
             Text(
                 "Si cuenta de más (sacudidas, pasos): sube la exigencia. Si no cuenta sentadillas reales: bájala o vuelve a preconfigurar.",

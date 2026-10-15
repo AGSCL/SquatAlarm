@@ -173,6 +173,30 @@ require(rejects(PrefsCodec.HEADER + "\ncal_thr_down=NaN")) { "NaN → rechazar" 
 require(rejects(PrefsCodec.HEADER + "\nsin_signo_igual")) { "línea sin = → rechazar" }
 require(PrefsCodec.decode(PrefsCodec.HEADER + "\nclave_de_otra_version=1\n\n# comentario\nhour=8") == mapOf("hour" to 8)) { "ignora claves desconocidas" }
 require(PrefsCodec.decode(PrefsCodec.HEADER + "\nsensor_text=a=b").getValue("sensor_text") == "a=b") { "texto con =" }
+require(rejects(PrefsCodec.HEADER + "\nstrictness=0")) { "exigencia 0 contaría cualquier movimiento → rechazar" }
+require(rejects(PrefsCodec.HEADER + "\nsquats_required=100000")) { "sentadillas fuera de rango → rechazar" }
+require(rejects(PrefsCodec.HEADER + "\nsafety_timeout_min=0") && rejects(PrefsCodec.HEADER + "\nhour=24")) { "rangos de la interfaz" }
+require(PrefsCodec.decode("\uFEFF" + PrefsCodec.HEADER + "\r\nhour=6\r\n") == mapOf("hour" to 6)) { "BOM y fin de línea de Windows" }
+run {
+    // Todo lo que la app puede guardar (extremos de la interfaz y del tuner) se puede volver a importar.
+    val extremes = listOf(
+        mapOf("hour" to 0, "minute" to 59, "repeat_days" to 127, "squats_required" to 3, "strictness" to 0.5f,
+            "safety_timeout_min" to 180, "mission" to 0, "cal_sens" to -1f, "cal_tilt_max" to 180f),
+        mapOf("hour" to 23, "minute" to 0, "repeat_days" to 0, "squats_required" to 40, "strictness" to 1.8f,
+            "safety_timeout_min" to 5, "mission" to 1, "cal_sens" to 1f, "cal_tilt_min" to 0f),
+    )
+    for (m in extremes) require(PrefsCodec.decode(PrefsCodec.encode(m)) == m) { "extremos válidos: $m" }
+    for (i in listOf(0, BayesTuner.N - 1, tuner.bestIndex(0.5))) {
+        val cal = BayesTuner.calibration(i)
+        val m = mapOf<String, Any>(
+            "cal_thr_down" to cal.thresholdDown, "cal_thr_up" to cal.thresholdUp, "cal_min_cycle" to cal.minCycleMs,
+            "cal_max_cycle" to cal.maxCycleMs, "cal_max_peak" to cal.maxPeak, "cal_tilt_min" to cal.tiltMinDeg, "cal_tilt_max" to cal.tiltMaxDeg,
+        )
+        require(PrefsCodec.decode(PrefsCodec.encode(m)) == m) { "θ#$i exportada debe poder importarse" }
+    }
+    val d = Calibration.DEFAULT
+    require(PrefsCodec.decode(PrefsCodec.encode(mapOf("cal_thr_down" to d.thresholdDown, "cal_min_cycle" to d.minCycleMs, "cal_max_cycle" to d.maxCycleMs))).size == 3) { "valores por defecto" }
+}
 
 // 9) Regla del sensor: solo una notificación NUEVA, de esa app y con ese texto
 val pkg = "com.theswitchbot.switchbot"

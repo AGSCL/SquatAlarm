@@ -73,7 +73,7 @@ object PermissionUtils {
             list += PermItem(
                 "listener", "Acceso a notificaciones",
                 "Para saber cuándo el sensor detecta movimiento. Solo se mira la notificación del sensor elegido.",
-                NotificationManagerCompat.getEnabledListenerPackages(context).contains(context.packageName),
+                listenerEnabled(context),
                 Intent(Settings.ACTION_NOTIFICATION_LISTENER_SETTINGS)
             )
         }
@@ -87,6 +87,19 @@ object PermissionUtils {
     }
 
     fun missingCount(context: Context): Int = items(context).count { !it.granted }
+
+    private fun listenerEnabled(context: Context): Boolean =
+        NotificationManagerCompat.getEnabledListenerPackages(context).contains(context.packageName)
+
+    /**
+     * La misión del sensor solo se usa si está completa (notificación elegida y acceso concedido). Si no,
+     * la alarma se apaga con sentadillas; de lo contrario solo el apagado de seguridad podría pararla.
+     */
+    fun sensorMissionReady(context: Context): Boolean {
+        val p = AlarmPrefs(context)
+        return p.mission == AlarmPrefs.MISSION_SENSOR && p.sensorPackage.isNotEmpty() && p.sensorText.isNotBlank() &&
+            listenerEnabled(context)
+    }
 
     private fun accessibilityEnabled(context: Context): Boolean {
         val enabled = Settings.Secure.getString(

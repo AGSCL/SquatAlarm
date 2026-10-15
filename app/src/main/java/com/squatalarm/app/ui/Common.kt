@@ -4,6 +4,7 @@ import android.graphics.BitmapFactory
 import android.graphics.ImageDecoder
 import android.graphics.drawable.AnimatedImageDrawable
 import android.os.Build
+import android.view.View
 import android.widget.ImageView
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.isSystemInDarkTheme
@@ -21,11 +22,19 @@ import androidx.compose.material3.TextButton
 import androidx.compose.material3.darkColorScheme
 import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.ReadOnlyComposable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.luminance
+import androidx.compose.ui.semantics.LiveRegionMode
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.heading
+import androidx.compose.ui.semantics.liveRegion
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
@@ -34,8 +43,24 @@ import androidx.compose.ui.viewinterop.AndroidView
 import com.squatalarm.app.squat.Calibration
 import com.squatalarm.app.squat.SquatCounter
 
-val GREEN = Color(0xFF66BB6A)
-val RED = Color(0xFFEF5350)
+/** Verde y rojo con contraste ≥ 4,5:1 sobre el fondo y las tarjetas del tema activo (claro u oscuro). */
+val GREEN: Color
+    @Composable @ReadOnlyComposable
+    get() = if (isDark()) Color(0xFF66BB6A) else Color(0xFF1B5E20)
+
+val RED: Color
+    @Composable @ReadOnlyComposable
+    get() = if (isDark()) Color(0xFFFF8A80) else Color(0xFFB71C1C)
+
+@Composable
+@ReadOnlyComposable
+private fun isDark() = MaterialTheme.colorScheme.surface.luminance() < 0.5f
+
+/** Para TalkBack: qué ajusta el control y su valor (si no, un Slider solo se lee como porcentaje). */
+fun Modifier.labeled(label: String, value: String): Modifier = semantics {
+    contentDescription = label
+    stateDescription = value
+}
 
 @Composable
 fun SquatAlarmTheme(content: @Composable () -> Unit) {
@@ -48,8 +73,8 @@ fun SquatAlarmTheme(content: @Composable () -> Unit) {
 @Composable
 fun ScreenHeader(title: String, onBack: (() -> Unit)? = null) {
     Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-        if (onBack != null) TextButton(onClick = onBack) { Text("← Volver") }
-        Text(title, style = MaterialTheme.typography.headlineSmall, modifier = Modifier.padding(start = 8.dp))
+        if (onBack != null) TextButton(onClick = onBack) { Text("← Volver", Modifier.semantics { contentDescription = "Volver" }) }
+        Text(title, style = MaterialTheme.typography.headlineSmall, modifier = Modifier.padding(start = 8.dp).semantics { heading() })
     }
 }
 
@@ -57,7 +82,7 @@ fun ScreenHeader(title: String, onBack: (() -> Unit)? = null) {
 fun SectionCard(title: String, content: @Composable ColumnScope.() -> Unit) {
     Card(Modifier.fillMaxWidth()) {
         Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            Text(title, style = MaterialTheme.typography.titleMedium)
+            Text(title, style = MaterialTheme.typography.titleMedium, modifier = Modifier.semantics { heading() })
             content()
         }
     }
@@ -71,7 +96,7 @@ fun BigNumber(text: String, color: Color = Color.Unspecified) {
         fontWeight = FontWeight.Bold,
         textAlign = TextAlign.Center,
         color = color,
-        modifier = Modifier.fillMaxWidth(),
+        modifier = Modifier.fillMaxWidth().semantics { liveRegion = LiveRegionMode.Polite }, // TalkBack anuncia cada cambio
     )
 }
 
@@ -79,7 +104,8 @@ fun BigNumber(text: String, color: Color = Color.Unspecified) {
 @Composable
 fun GuideGif(name: String, modifier: Modifier = Modifier) {
     AndroidView(
-        factory = { ctx -> ImageView(ctx).apply { adjustViewBounds = true } },
+        // Decorativo para TalkBack: el texto del paso ya describe la postura.
+        factory = { ctx -> ImageView(ctx).apply { adjustViewBounds = true; importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO } },
         update = { view ->
             if (view.tag != name) {
                 view.tag = name
@@ -122,17 +148,19 @@ fun rejectText(r: SquatCounter.Reject): String = when (r) {
 fun LiveBar(aVert: Float, thresholdDown: Float, thresholdUp: Float, modifier: Modifier = Modifier) {
     val range = 5f
     val neutral = MaterialTheme.colorScheme.onSurface
+    val green = GREEN
+    val red = RED
     Canvas(modifier = modifier.fillMaxWidth().height(28.dp)) {
         val w = size.width
         val h = size.height
         fun x(v: Float): Float = ((v.coerceIn(-range, range) + range) / (2f * range)) * w
         drawRoundRect(color = Color.Gray.copy(alpha = 0.25f), cornerRadius = CornerRadius(h / 2f, h / 2f))
         drawLine(color = neutral.copy(alpha = 0.6f), start = Offset(x(0f), 0f), end = Offset(x(0f), h), strokeWidth = 2f)
-        drawLine(color = RED, start = Offset(x(-thresholdDown), 0f), end = Offset(x(-thresholdDown), h), strokeWidth = 3f)
-        drawLine(color = GREEN, start = Offset(x(thresholdUp), 0f), end = Offset(x(thresholdUp), h), strokeWidth = 3f)
+        drawLine(color = red, start = Offset(x(-thresholdDown), 0f), end = Offset(x(-thresholdDown), h), strokeWidth = 3f)
+        drawLine(color = green, start = Offset(x(thresholdUp), 0f), end = Offset(x(thresholdUp), h), strokeWidth = 3f)
         val dot = when {
-            aVert > thresholdUp -> GREEN
-            aVert < -thresholdDown -> RED
+            aVert > thresholdUp -> green
+            aVert < -thresholdDown -> red
             else -> neutral
         }
         drawCircle(color = dot, radius = h * 0.38f, center = Offset(x(aVert), h / 2f))

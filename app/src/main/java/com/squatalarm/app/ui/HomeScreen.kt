@@ -10,11 +10,17 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.consumeWindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.selection.selectable
+import androidx.compose.foundation.selection.selectableGroup
+import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
@@ -41,6 +47,9 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import com.squatalarm.app.alarm.AlarmPrefs
 import com.squatalarm.app.alarm.AlarmScheduler
@@ -102,6 +111,9 @@ fun HomeScreen(resumeTick: Int, onCalibrate: () -> Unit, onTest: () -> Unit, onP
         st.missing = PermissionUtils.missingCount(context)
     }
 
+    // Se recalcula al volver de Ajustes (resumeTick) o al cambiar la misión o el sensor.
+    val sensorReady = remember(resumeTick, st.mission, st.sensorPackage, st.sensorText) { PermissionUtils.sensorMissionReady(context) }
+
     fun toast(msg: String) = Toast.makeText(context, msg, Toast.LENGTH_LONG).show()
 
     val exportLauncher = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("text/plain")) { uri ->
@@ -141,6 +153,8 @@ fun HomeScreen(resumeTick: Int, onCalibrate: () -> Unit, onTest: () -> Unit, onP
         Column(
             modifier = Modifier
                 .padding(padding)
+                .consumeWindowInsets(padding)
+                .imePadding() // el teclado no tapa el campo de texto del sensor
                 .fillMaxSize()
                 .verticalScroll(rememberScrollState())
                 .padding(16.dp),
@@ -157,7 +171,7 @@ fun HomeScreen(resumeTick: Int, onCalibrate: () -> Unit, onTest: () -> Unit, onP
                     Text(
                         timeText,
                         style = MaterialTheme.typography.displayLarge,
-                        modifier = Modifier.clickable {
+                        modifier = Modifier.clickable(onClickLabel = "cambiar la hora", role = Role.Button) {
                             TimePickerDialog(
                                 context,
                                 { _, h, m -> st.hour = h; st.minute = m; save() },
@@ -166,8 +180,13 @@ fun HomeScreen(resumeTick: Int, onCalibrate: () -> Unit, onTest: () -> Unit, onP
                         },
                     )
                     Spacer(Modifier.weight(1f))
-                    Switch(checked = st.enabled, onCheckedChange = { st.enabled = it; save() })
+                    Switch(
+                        checked = st.enabled,
+                        onCheckedChange = { st.enabled = it; save() },
+                        modifier = Modifier.semantics { contentDescription = "Alarma" },
+                    )
                 }
+                Text("Toca la hora para cambiarla.", style = MaterialTheme.typography.bodySmall)
                 DaysRow(st.days) { st.days = it; save() }
                 Text(nextText, style = MaterialTheme.typography.bodyMedium)
                 Text("Sentadillas para apagarla: ${st.squats}")
@@ -177,6 +196,7 @@ fun HomeScreen(resumeTick: Int, onCalibrate: () -> Unit, onTest: () -> Unit, onP
                     onValueChangeFinished = { save() },
                     valueRange = 3f..40f,
                     steps = 36,
+                    modifier = Modifier.labeled("Sentadillas para apagarla", "${st.squats}"),
                 )
                 Text("Apagado de seguridad: ${st.safetyMin} min")
                 Slider(
@@ -185,6 +205,7 @@ fun HomeScreen(resumeTick: Int, onCalibrate: () -> Unit, onTest: () -> Unit, onP
                     onValueChangeFinished = { save() },
                     valueRange = 5f..180f,
                     steps = 34,
+                    modifier = Modifier.labeled("Apagado de seguridad", "${st.safetyMin} minutos"),
                 )
                 Text(
                     "Si la detección fallara, la alarma se apaga sola tras ese tiempo. Es la única salida sin cumplir la misión.",
@@ -199,11 +220,13 @@ fun HomeScreen(resumeTick: Int, onCalibrate: () -> Unit, onTest: () -> Unit, onP
             }
 
             SectionCard("Para apagar la alarma") {
-                MissionOption("Hacer sentadillas", st.mission == AlarmPrefs.MISSION_SQUATS) {
-                    st.mission = AlarmPrefs.MISSION_SQUATS; save()
-                }
-                MissionOption("Caminar hasta un sensor de movimiento", st.mission == AlarmPrefs.MISSION_SENSOR) {
-                    st.mission = AlarmPrefs.MISSION_SENSOR; save()
+                Column(Modifier.selectableGroup()) {
+                    MissionOption("Hacer sentadillas", st.mission == AlarmPrefs.MISSION_SQUATS) {
+                        st.mission = AlarmPrefs.MISSION_SQUATS; save()
+                    }
+                    MissionOption("Caminar hasta un sensor de movimiento", st.mission == AlarmPrefs.MISSION_SENSOR) {
+                        st.mission = AlarmPrefs.MISSION_SENSOR; save()
+                    }
                 }
                 if (st.mission == AlarmPrefs.MISSION_SENSOR) {
                     Text(
@@ -220,8 +243,13 @@ fun HomeScreen(resumeTick: Int, onCalibrate: () -> Unit, onTest: () -> Unit, onP
                             singleLine = true,
                             modifier = Modifier.fillMaxWidth(),
                         )
-                    } else {
-                        Text("Aún no eliges la notificación del sensor.", color = MaterialTheme.colorScheme.error)
+                    }
+                    if (!sensorReady) {
+                        Text(
+                            "Mientras no elijas la notificación del sensor o falte «Acceso a notificaciones» (Revisar permisos), " +
+                                "la alarma se apaga con sentadillas.",
+                            color = MaterialTheme.colorScheme.error,
+                        )
                     }
                     OutlinedButton(onClick = { st.picking = !st.picking }, modifier = Modifier.fillMaxWidth()) {
                         Text(if (st.picking) "Cancelar" else "Elegir la notificación del sensor")
@@ -260,6 +288,7 @@ fun HomeScreen(resumeTick: Int, onCalibrate: () -> Unit, onTest: () -> Unit, onP
                     onValueChange = { st.strictness = (it * 10f).roundToInt() / 10f },
                     onValueChangeFinished = { save() },
                     valueRange = 0.5f..1.8f,
+                    modifier = Modifier.labeled("Exigencia del movimiento", "×%.1f".format(st.strictness)),
                 )
             }
 
@@ -305,10 +334,10 @@ fun HomeScreen(resumeTick: Int, onCalibrate: () -> Unit, onTest: () -> Unit, onP
 @Composable
 private fun MissionOption(label: String, selected: Boolean, onSelect: () -> Unit) {
     Row(
-        Modifier.fillMaxWidth().clickable(onClick = onSelect),
+        Modifier.fillMaxWidth().heightIn(min = 48.dp).selectable(selected = selected, role = Role.RadioButton, onClick = onSelect),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        RadioButton(selected = selected, onClick = onSelect)
+        RadioButton(selected = selected, onClick = null) // la fila entera es el control (un solo foco para TalkBack)
         Text(label)
     }
 }
@@ -343,6 +372,7 @@ private fun SensorPicker(onPick: (SensorNotificationListener.Seen) -> Unit) {
 @Composable
 private fun DaysRow(days: Int, onChange: (Int) -> Unit) {
     val labels = listOf("L", "M", "X", "J", "V", "S", "D")
+    val names = listOf("Lunes", "Martes", "Miércoles", "Jueves", "Viernes", "Sábado", "Domingo")
     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
         labels.forEachIndexed { i, label ->
             val dow = if (i == 6) Calendar.SUNDAY else i + 2 // L=2 … S=7, D=1
@@ -351,11 +381,12 @@ private fun DaysRow(days: Int, onChange: (Int) -> Unit) {
             Surface(
                 shape = CircleShape,
                 color = if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceVariant,
-                modifier = Modifier.size(40.dp).clickable { onChange(days xor bit) },
+                modifier = Modifier.size(40.dp).toggleable(value = selected, role = Role.Checkbox) { onChange(days xor bit) },
             ) {
                 Box(contentAlignment = Alignment.Center) {
                     Text(
                         label,
+                        modifier = Modifier.semantics { contentDescription = names[i] },
                         color = if (selected) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                 }

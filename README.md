@@ -16,7 +16,8 @@ se instala encima del anterior sin desinstalar. Requisitos: Android 8.0+ (API 26
 ## Primer uso
 
 1. **Permisos** → concede todos (6; 7 con la misión del sensor). Si sale «A la app se le negó el acceso», ver [Permisos bloqueados](#permisos-bloqueados-y-play-protect).
-2. **Preconfigurar** (unos 8–10 min, ver abajo). Se guarda sola al terminar.
+2. **Preconfigurar** (unos 8–10 min, ver abajo). Se guarda sola al terminar. La pantalla queda encendida y, mientras
+   graba un paso, «Volver» y el gesto Atrás se desactivan para que un toque accidental no borre el progreso.
 3. **Probar detección**: cada sentadilla suma 1. Cuando un movimiento no cuenta, la pantalla dice por qué
    (p. ej. «el torso no se inclinó (¿solo brazos?)»).
 4. **Probar alarma en 10 s**, bloquear el teléfono y esperar. En modo prueba hay botón para apagarla; en la real no.
@@ -41,14 +42,16 @@ La app lee la notificación con el permiso estándar de Android (`NotificationLi
 pantalla y no guarda ni envía otras notificaciones; además, la app no tiene permiso de Internet. Limitaciones:
 depende de que el sensor y su app avisen (internet, hub y nube del fabricante); si otra persona pasa frente al
 sensor, también la apaga; si el sensor ya estaba en estado «movimiento», puede no avisar de nuevo hasta que se
-despeje. Si no llega nada, actúa el apagado de seguridad.
+despeje. Si no llega nada, actúa el apagado de seguridad. Si la misión está elegida pero falta la notificación del
+sensor o el «Acceso a notificaciones», la alarma se apaga con sentadillas.
 
 ## Respaldo de parámetros
 
 Al instalar una versión nueva **encima** de la anterior (misma firma), los parámetros se conservan; solo se pierden
 al desinstalar. **Respaldo de parámetros → Exportar** guarda un archivo de texto (`squatalarm-parametros.txt`) en la
 carpeta que elijas (Descargas, Drive…), con la preconfiguración, la alarma, la misión y el sensor. **Importar** lo
-restaura. Al importar, cada valor se valida con su tipo; si el archivo no es válido, no se cambia nada.
+restaura. Al importar, cada valor se valida con su tipo y su rango (los de la interfaz); si el archivo no es válido,
+no se cambia nada.
 
 ## Preconfiguración bayesiana
 
@@ -172,8 +175,8 @@ Si no ves la opción, busca «restringidos» en el buscador de Ajustes; algunas 
   pantalla sobre el bloqueo, fijada (`startLockTask`). Atrás y volumen no hacen nada. Un vigilante la vuelve a traer
   al frente.
 - `block/PowerMenuBlockerService` (accesibilidad): cierra el menú de apagado en cuanto aparece. Si el teléfono igual
-  se reinicia (botón de encendido 10+ s), la alarma vuelve a sonar al encender. Para el bloqueo total del menú,
-  ver «device owner» abajo.
+  se reinicia (botón de encendido 10+ s), la alarma vuelve a sonar al encender y desbloquear. Para el bloqueo total
+  del menú, ver «device owner» abajo.
 
 ### Bloqueo al 100 % (opcional, avanzado)
 
@@ -195,5 +198,7 @@ Requiere un teléfono sin cuentas configuradas y ADB:
 - Ningún sensor del teléfono puede impedir del todo la trampa: quien mueva el teléfono con los brazos **imitando a la
   vez** amplitud, ritmo e inclinación del torso puede engañarlo. Las falsaciones miden cuán difícil es; «solo brazos,
   lento» es la más exigente.
+- Tras un reinicio, Android avisa a la app recién al **primer desbloqueo** (si el teléfono tiene PIN o huella). Si se
+  reinicia de noche (p. ej. una actualización del sistema) y nadie lo desbloquea, la alarma no suena hasta desbloquearlo.
 - Algunas capas de fabricante (Xiaomi, Huawei) matan servicios en segundo plano: concede «sin restricción de batería»
   y, si existe, «inicio automático».

@@ -7,6 +7,7 @@ import android.os.Build
 import android.os.VibrationEffect
 import android.os.Vibrator
 import android.os.VibratorManager
+import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
@@ -38,6 +39,11 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalView
+import androidx.compose.ui.semantics.LiveRegionMode
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.liveRegion
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
@@ -156,12 +162,19 @@ fun PreconfigScreen(onDone: () -> Unit) {
         }).also { d -> d.recorder = { a, t, x, y, z -> if (st.recording) st.current?.add(a, t, x, y, z) } }
     }
     val tone = remember { try { ToneGenerator(AudioManager.STREAM_ALARM, 80) } catch (e: Exception) { null } }
+    val view = LocalView.current
     DisposableEffect(Unit) {
+        // Con el teléfono contra el pecho, la pantalla se apagaría a mitad de un paso y se perderían muestras.
+        view.keepScreenOn = true
         onDispose {
+            view.keepScreenOn = false
             detector.stop()
             tone?.release()
         }
     }
+    // Mientras graba, las manos tapan la pantalla: un toque o gesto de Atrás accidental no debe borrar el progreso.
+    val busy = st.phase == Phase.COUNTDOWN || st.phase == Phase.RECORDING || st.phase == Phase.UPDATING
+    BackHandler(enabled = busy) {}
 
     // Pitido + vibración: con el teléfono contra el pecho no se ve la pantalla.
     fun cue() {
@@ -272,7 +285,7 @@ fun PreconfigScreen(onDone: () -> Unit) {
                 .padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp),
         ) {
-            ScreenHeader("Preconfigurar detección", onBack = onDone)
+            ScreenHeader("Preconfigurar detección", onBack = onDone.takeUnless { busy })
             when (st.phase) {
                 Phase.INTRO -> Intro(st, detector.isAvailable) { startSteps(trainingSteps(st.totalSquats)) }
                 Phase.READY -> Ready(st) { st.phase = Phase.COUNTDOWN }
@@ -360,6 +373,7 @@ private fun ColumnScope.Intro(st: PreState, sensorAvailable: Boolean, onStart: (
         onValueChange = { st.totalSquats = (it / 10f).roundToInt() * 10 },
         valueRange = 30f..60f,
         steps = 2,
+        modifier = Modifier.labeled("Sentadillas de entrenamiento", "${st.totalSquats}"),
     )
     if (!sensorAvailable) {
         Text("⚠ Este teléfono no tiene acelerómetro; no se puede preconfigurar.", color = MaterialTheme.colorScheme.error)
@@ -424,14 +438,14 @@ private fun ColumnScope.Ask(st: PreState, onConfirm: () -> Unit, onRedo: () -> U
         else "¿Hiciste alguna sentadilla real durante esta prueba? (normalmente 0)"
     )
     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.Center, verticalAlignment = Alignment.CenterVertically) {
-        OutlinedButton(onClick = { if (st.answer > 0) st.answer-- }) { Text("−") }
+        OutlinedButton(onClick = { if (st.answer > 0) st.answer-- }, Modifier.semantics { contentDescription = "Una menos" }) { Text("−") }
         Text(
             "${st.answer}",
             style = MaterialTheme.typography.displayMedium,
             fontWeight = FontWeight.Bold,
-            modifier = Modifier.padding(horizontal = 24.dp),
+            modifier = Modifier.padding(horizontal = 24.dp).semantics { liveRegion = LiveRegionMode.Polite },
         )
-        OutlinedButton(onClick = { if (st.answer < 60) st.answer++ }) { Text("+") }
+        OutlinedButton(onClick = { if (st.answer < 60) st.answer++ }, Modifier.semantics { contentDescription = "Una más" }) { Text("+") }
     }
     if (st.liveCount != st.answer) {
         Text(
@@ -490,6 +504,7 @@ private fun ColumnScope.TuneResult(st: PreState, onWeightChanged: () -> Unit, on
             onValueChange = { st.weight = (it * 20f).roundToInt() / 20f },
             onValueChangeFinished = onWeightChanged,
             valueRange = 0.1f..0.9f,
+            modifier = Modifier.labeled("Peso de la sensibilidad", "%.2f".format(st.weight)),
         )
         Text("← que no cuente trampas      que no se le escapen sentadillas →", style = MaterialTheme.typography.bodySmall)
     }

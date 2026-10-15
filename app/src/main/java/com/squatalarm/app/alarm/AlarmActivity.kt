@@ -18,6 +18,7 @@ import com.squatalarm.app.squat.SquatCounter
 import com.squatalarm.app.squat.SquatDetector
 import com.squatalarm.app.ui.AlarmScreen
 import com.squatalarm.app.ui.rejectText
+import com.squatalarm.app.util.PermissionUtils
 import kotlinx.coroutines.delay
 
 /**
@@ -46,7 +47,7 @@ class AlarmActivity : ComponentActivity(), SquatDetector.Listener {
         }
         setupWindow()
         required = prefs.squatsRequired
-        sensorText = if (prefs.mission == AlarmPrefs.MISSION_SENSOR) prefs.sensorText else null
+        sensorText = if (PermissionUtils.sensorMissionReady(this)) prefs.sensorText else null
         val det = SquatDetector.fromPrefs(this, prefs, this)
         detector = det
         onBackPressedDispatcher.addCallback(this) { /* Atrás bloqueado */ }

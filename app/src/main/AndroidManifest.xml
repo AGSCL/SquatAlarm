@@ -21,8 +21,10 @@
         android:supportsRtl="true"
         android:theme="@style/Theme.SquatAlarm">
 
+        <!-- configChanges: girar el teléfono durante la preconfiguración no reinicia la pantalla ni borra el progreso -->
         <activity
             android:name=".MainActivity"
+            android:configChanges="orientation|screenSize|screenLayout|smallestScreenSize|keyboardHidden"
             android:exported="true"
             android:launchMode="singleTask">
             <intent-filter>

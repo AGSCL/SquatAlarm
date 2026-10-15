@@ -2,6 +2,7 @@ package com.squatalarm.app
 
 import android.os.Bundle
 import androidx.activity.ComponentActivity
+import androidx.activity.enableEdgeToEdge
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.setContent
 import androidx.compose.runtime.Composable
@@ -23,6 +24,7 @@ class MainActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        enableEdgeToEdge() // íconos de la barra de estado legibles en tema claro (Android 15 dibuja bajo las barras)
         setContent {
             SquatAlarmTheme {
                 AppRoot(resumeTick = resumeTick.intValue)
