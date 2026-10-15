@@ -172,8 +172,9 @@ fun PreconfigScreen(onDone: () -> Unit) {
             tone?.release()
         }
     }
-    // Mientras graba, las manos tapan la pantalla: un toque o gesto de Atrás accidental no debe borrar el progreso.
-    val busy = st.phase == Phase.COUNTDOWN || st.phase == Phase.RECORDING || st.phase == Phase.UPDATING
+    // Mientras graba (y justo al terminar, con el teléfono aún en el pecho), las manos tapan la pantalla:
+    // un toque o gesto de Atrás accidental no debe borrar el progreso. Desde ASK se sale con «Confirmar».
+    val busy = st.phase == Phase.COUNTDOWN || st.phase == Phase.RECORDING || st.phase == Phase.ASK || st.phase == Phase.UPDATING
     BackHandler(enabled = busy) {}
 
     // Pitido + vibración: con el teléfono contra el pecho no se ve la pantalla.

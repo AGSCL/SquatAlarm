@@ -4,8 +4,6 @@ import android.content.Intent
 import android.net.Uri
 import android.provider.Settings
 import android.widget.Toast
-import androidx.activity.compose.rememberLauncherForActivityResult
-import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -20,10 +18,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
@@ -34,9 +29,7 @@ import com.squatalarm.app.util.PermissionUtils
 @Composable
 fun PermissionsScreen(resumeTick: Int, onDone: () -> Unit) {
     val context = LocalContext.current
-    var tick by remember { mutableIntStateOf(0) }
-    val launcher = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { tick++ }
-    val items = remember(resumeTick, tick) { PermissionUtils.items(context) }
+    val items = remember(resumeTick) { PermissionUtils.items(context) }
 
     Scaffold { padding ->
         Column(
@@ -54,15 +47,10 @@ fun PermissionsScreen(resumeTick: Int, onDone: () -> Unit) {
             )
             items.forEach { item ->
                 PermissionRow(item) {
-                    val intent = item.intent
-                    if (intent == null) {
-                        launcher.launch(PermissionUtils.POST_NOTIFICATIONS)
-                    } else {
-                        try {
-                            context.startActivity(intent)
-                        } catch (e: Exception) {
-                            Toast.makeText(context, "Abre Ajustes y busca: ${item.title}", Toast.LENGTH_LONG).show()
-                        }
+                    try {
+                        context.startActivity(item.intent)
+                    } catch (e: Exception) {
+                        Toast.makeText(context, "Abre Ajustes y busca: ${item.title}", Toast.LENGTH_LONG).show()
                     }
                 }
             }

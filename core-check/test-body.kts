@@ -70,6 +70,16 @@ require(count(armsSlow, Calibration.DEFAULT.copy(tiltMinDeg = 10f)) == 0) { "inc
 require(count(armsFast, Calibration.DEFAULT.copy(maxPeak = 7f)) == 0) { "pico máximo 7 debe vetar brazos rápidos" }
 require(count(squats(10), Calibration.DEFAULT.copy(tiltMinDeg = 10f, maxPeak = 7f)) == 10) { "las sentadillas pasan los vetos" }
 run {
+    // Tomar el teléfono (frenazo con 70° de inclinación, sin lóbulo positivo) y a 1,5 s hacer una sentadilla:
+    // el ciclo nuevo debe medirse desde su propio inicio, no desde la orientación del gesto anterior.
+    val strict = Calibration(1.3f, 1.3f, 500L, 5000L, maxPeak = 5.5f, tiltMinDeg = 10f, tiltMaxDeg = 60f)
+    val pickup = (0 until 300 step 20).map { Smp(-2.5f * sin(PI * it / 300).toFloat(), it.toLong(), 70.0) } +
+        (300 until 1800 step 20).map { Smp(0f, it.toLong(), 0.0) }
+    val squat = squats(1).map { Smp(it.a, it.t + 1800, it.tiltDeg) }
+    require(count(squats(1), strict) == 1) { "la sentadilla sola cuenta" }
+    require(count(pickup + squat, strict) == 1) { "tras tomar el teléfono, la sentadilla siguiente también cuenta" }
+}
+run {
     val k = Calibration.DEFAULT.counter()
     var last: SquatCounter.Squat? = null
     for (s in armsSlow) k.process(s.a, s.t, s.gx(), s.gy(), s.gz())?.let { last = it }

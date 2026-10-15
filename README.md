@@ -15,7 +15,7 @@ se instala encima del anterior sin desinstalar. Requisitos: Android 8.0+ (API 26
 
 ## Primer uso
 
-1. **Permisos** → concede todos (6; 7 con la misión del sensor). Si sale «A la app se le negó el acceso», ver [Permisos bloqueados](#permisos-bloqueados-y-play-protect).
+1. **Permisos** → concede todos (hasta 6 según la versión de Android; uno más con la misión del sensor). Si sale «A la app se le negó el acceso», ver [Permisos bloqueados](#permisos-bloqueados-y-play-protect).
 2. **Preconfigurar** (unos 8–10 min, ver abajo). Se guarda sola al terminar. La pantalla queda encendida y, mientras
    graba un paso, «Volver» y el gesto Atrás se desactivan para que un toque accidental no borre el progreso.
 3. **Probar detección**: cada sentadilla suma 1. Cuando un movimiento no cuenta, la pantalla dice por qué
@@ -173,7 +173,8 @@ Si no ves la opción, busca «restringidos» en el buscador de Ajustes; algunas 
 - `squat/SquatDetector.kt`: capa de sensores (gravedad + aceleración lineal; respaldo con acelerómetro).
 - `alarm/`: `setAlarmClock` → servicio en primer plano (sonido de alarma a volumen máximo, vibración, wakelock) →
   pantalla sobre el bloqueo, fijada (`startLockTask`). Atrás y volumen no hacen nada. Un vigilante la vuelve a traer
-  al frente.
+  al frente, salvo durante una llamada o con el marcador abierto (para poder llamar a emergencias; la alarma sigue
+  sonando).
 - `block/PowerMenuBlockerService` (accesibilidad): cierra el menú de apagado en cuanto aparece. Si el teléfono igual
   se reinicia (botón de encendido 10+ s), la alarma vuelve a sonar al encender y desbloquear. Para el bloqueo total
   del menú, ver «device owner» abajo.
@@ -181,8 +182,9 @@ Si no ves la opción, busca «restringidos» en el buscador de Ajustes; algunas 
 ### Bloqueo al 100 % (opcional, avanzado)
 
 Requiere un teléfono sin cuentas configuradas y ADB:
-`adb shell dpm set-device-owner com.squatalarm.app/.block.AdminReceiver`. Para revertir:
-`adb shell dpm remove-active-admin com.squatalarm.app/.block.AdminReceiver`.
+`adb shell dpm set-device-owner com.squatalarm.app/.block.AdminReceiver`. En este modo, mientras suena **no hay forma
+de llamar a emergencias** y la app no se puede desinstalar. Para revertir: en la app, **Quitar bloqueo al 100 %** (la
+tarjeta solo aparece en este modo); `adb shell dpm remove-active-admin` no funciona con el APK de Releases.
 
 ## Pruebas y herramientas
 

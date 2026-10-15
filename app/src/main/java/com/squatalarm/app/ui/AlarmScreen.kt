@@ -1,13 +1,17 @@
 package com.squatalarm.app.ui
 
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.systemBarsPadding
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Surface
@@ -54,35 +58,38 @@ fun AlarmScreen(
     val timeText = SimpleDateFormat("HH:mm", Locale.getDefault()).format(Date(now))
 
     Surface(modifier = Modifier.fillMaxSize(), color = Color.Black) {
-        Column(
-            modifier = Modifier.fillMaxSize().systemBarsPadding().padding(24.dp),
-            horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.SpaceBetween,
-        ) {
-            Text(timeText, fontSize = 64.sp, color = Color.White, fontWeight = FontWeight.Light)
+        // Desplazable: con letra al 200 % no cabe y el final (incluido «Apagar (modo prueba)») quedaba cortado.
+        BoxWithConstraints(Modifier.fillMaxSize().systemBarsPadding()) {
+            Column(
+                modifier = Modifier.verticalScroll(rememberScrollState()).heightIn(min = maxHeight).fillMaxWidth().padding(24.dp),
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.SpaceBetween,
+            ) {
+                Text(timeText, fontSize = 64.sp, color = Color.White, fontWeight = FontWeight.Light)
 
-            if (sensorText != null) {
-                Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                    Text("🚶", fontSize = 96.sp)
-                    Text("Camina hasta el sensor", color = Color.White, fontSize = 26.sp, fontWeight = FontWeight.Bold)
-                    Spacer(Modifier.height(12.dp))
-                    Text(
-                        "La alarma se apaga cuando llegue una notificación nueva con «$sensorText».",
-                        color = Color.LightGray, fontSize = 18.sp, textAlign = TextAlign.Center,
-                    )
-                }
-                Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                    if (showEscape) {
-                        OutlinedButton(onClick = onEscape) { Text("Apagar (modo prueba)") }
-                    } else {
+                if (sensorText != null) {
+                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                        Text("🚶", fontSize = 96.sp)
+                        Text("Camina hasta el sensor", color = Color.White, fontSize = 26.sp, fontWeight = FontWeight.Bold)
+                        Spacer(Modifier.height(12.dp))
                         Text(
-                            "No se puede silenciar ni apagar hasta que el sensor te detecte.",
-                            color = Color.Gray, fontSize = 13.sp, textAlign = TextAlign.Center,
+                            "La alarma se apaga cuando llegue una notificación nueva con «$sensorText».",
+                            color = Color.LightGray, fontSize = 18.sp, textAlign = TextAlign.Center,
                         )
                     }
+                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                        if (showEscape) {
+                            OutlinedButton(onClick = onEscape) { Text("Apagar (modo prueba)") }
+                        } else {
+                            Text(
+                                "No se puede silenciar ni apagar hasta que el sensor te detecte.",
+                                color = Color.Gray, fontSize = 13.sp, textAlign = TextAlign.Center,
+                            )
+                        }
+                    }
+                } else {
+                    SquatSection(required, done, aVert, thresholdDown, thresholdUp, sensorAvailable, rejection, showEscape, onEscape)
                 }
-            } else {
-                SquatSection(required, done, aVert, thresholdDown, thresholdUp, sensorAvailable, rejection, showEscape, onEscape)
             }
         }
     }

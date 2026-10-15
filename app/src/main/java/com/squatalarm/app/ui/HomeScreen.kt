@@ -54,6 +54,7 @@ import androidx.compose.ui.unit.dp
 import com.squatalarm.app.alarm.AlarmPrefs
 import com.squatalarm.app.alarm.AlarmScheduler
 import com.squatalarm.app.alarm.SensorNotificationListener
+import com.squatalarm.app.block.DeviceOwnerHelper
 import com.squatalarm.app.util.PermissionUtils
 import java.text.SimpleDateFormat
 import java.util.Calendar
@@ -326,6 +327,23 @@ fun HomeScreen(resumeTick: Int, onCalibrate: () -> Unit, onTest: () -> Unit, onP
                     },
                     modifier = Modifier.fillMaxWidth(),
                 ) { Text("Probar alarma en 10 s") }
+            }
+
+            var owner by remember(resumeTick) { mutableStateOf(DeviceOwnerHelper.isOwner(context)) }
+            if (owner) {
+                SectionCard("Bloqueo al 100 % (device owner)") {
+                    Text(
+                        "Activo: mientras suena no hay menú de apagado ni forma de llamar a emergencias, y la app no se puede desinstalar.",
+                        style = MaterialTheme.typography.bodySmall,
+                    )
+                    OutlinedButton(
+                        onClick = {
+                            owner = !DeviceOwnerHelper.clear(context)
+                            toast(if (owner) "No se pudo quitar" else "Bloqueo al 100 % quitado")
+                        },
+                        modifier = Modifier.fillMaxWidth(),
+                    ) { Text("Quitar bloqueo al 100 %") }
+                }
             }
         }
     }

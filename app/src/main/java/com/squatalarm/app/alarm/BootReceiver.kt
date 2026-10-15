@@ -8,13 +8,10 @@ import android.content.Intent
 class BootReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent) {
         val prefs = AlarmPrefs(context)
-        if (prefs.isRinging) {
-            val ringingFor = System.currentTimeMillis() - prefs.ringingSince
-            if (ringingFor in 0L..(prefs.safetyTimeoutMin * 60_000L)) {
-                AlarmScheduler.ringIn(context, 2_000L, prefs.isTestRing)
-            } else {
-                prefs.isRinging = false
-            }
+        if (prefs.ringingActive()) {
+            AlarmScheduler.ringIn(context, 2_000L, prefs.isTestRing)
+        } else {
+            prefs.isRinging = false
         }
         AlarmScheduler.schedule(context)
     }

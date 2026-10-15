@@ -20,7 +20,7 @@ class AlarmReceiver : BroadcastReceiver() {
     }
 
     private fun ring(context: Context, prefs: AlarmPrefs) {
-        if (!prefs.isRinging) {
+        if (!prefs.ringingActive()) { // un is_ringing viejo apagaría esta alarma en el primer chequeo (4 s)
             prefs.isRinging = true
             prefs.ringingSince = System.currentTimeMillis()
         }

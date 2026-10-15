@@ -17,6 +17,7 @@ import android.os.Handler
 import android.os.IBinder
 import android.os.Looper
 import android.os.PowerManager
+import android.os.SystemClock
 import android.os.VibrationAttributes
 import android.os.VibrationEffect
 import android.os.Vibrator
@@ -37,7 +38,6 @@ class AlarmService : Service() {
     private var player: MediaPlayer? = null
     private var wakeLock: PowerManager.WakeLock? = null
     private var focusRequest: AudioFocusRequest? = null
-    private var originalVolume = -1
     private var startedAt = 0L
     private var safetyTimeoutMs = AlarmPrefs.DEFAULT_SAFETY_TIMEOUT_MIN * 60_000L
     private var ringing = false
@@ -52,7 +52,9 @@ class AlarmService : Service() {
             }
             ensureVolume()
             ensurePlaying()
-            if (!activityVisible) {
+            // No tapar una llamada (p. ej. de emergencia) ni el marcador abierto para hacerla.
+            val inCall = getSystemService(AudioManager::class.java).mode != AudioManager.MODE_NORMAL
+            if (!activityVisible && !inCall && SystemClock.elapsedRealtime() > dialerPauseUntil) {
                 wakeScreen()
                 bringToFront(this@AlarmService, repostNotification = true)
             }
@@ -65,7 +67,8 @@ class AlarmService : Service() {
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         startForegroundCompat()
         val prefs = AlarmPrefs(this)
-        if (intent?.action == ACTION_STOP || !prefs.isRinging) {
+        // ringingActive y no isRinging: si START_STICKY reinicia el servicio de una alarma ya vencida, no vuelve a sonar.
+        if (intent?.action == ACTION_STOP || !prefs.ringingActive()) {
             prefs.isRinging = false
             stopSelf()
             return START_NOT_STICKY
@@ -116,9 +119,11 @@ class AlarmService : Service() {
         focusRequest?.let { try { am.abandonAudioFocusRequest(it) } catch (e: Exception) { } }
         focusRequest = null
         try { vibrator()?.cancel() } catch (e: Exception) { }
-        if (originalVolume >= 0) {
-            try { am.setStreamVolume(AudioManager.STREAM_ALARM, originalVolume, 0) } catch (e: Exception) { }
-            originalVolume = -1
+        val prefs = AlarmPrefs(this)
+        val before = prefs.volumeBefore
+        if (before >= 0) {
+            try { am.setStreamVolume(AudioManager.STREAM_ALARM, before, 0) } catch (e: Exception) { }
+            prefs.volumeBefore = -1
         }
         wakeLock?.let { if (it.isHeld) it.release() }
         wakeLock = null
@@ -131,7 +136,8 @@ class AlarmService : Service() {
             val am = getSystemService(AudioManager::class.java)
             val max = am.getStreamMaxVolume(AudioManager.STREAM_ALARM)
             val cur = am.getStreamVolume(AudioManager.STREAM_ALARM)
-            if (originalVolume < 0) originalVolume = cur
+            val prefs = AlarmPrefs(this)
+            if (prefs.volumeBefore < 0) prefs.volumeBefore = cur
             if (cur < max) am.setStreamVolume(AudioManager.STREAM_ALARM, max, 0)
         } catch (e: Exception) { }
     }
@@ -233,6 +239,8 @@ class AlarmService : Service() {
 
         @Volatile var isRunning = false
         @Volatile var activityVisible = false
+        /** Hasta cuándo (elapsedRealtime) no traer la alarma al frente: el marcador está abierto (ver PowerMenuBlockerService). */
+        @Volatile var dialerPauseUntil = 0L
 
         fun start(context: Context) {
             ContextCompat.startForegroundService(context, Intent(context, AlarmService::class.java))

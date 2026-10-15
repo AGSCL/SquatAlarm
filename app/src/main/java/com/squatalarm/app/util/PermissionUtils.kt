@@ -15,13 +15,13 @@ import androidx.core.content.ContextCompat
 import com.squatalarm.app.alarm.AlarmPrefs
 import com.squatalarm.app.block.PowerMenuBlockerService
 
-/** Un permiso o ajuste que la alarma necesita; `intent == null` → permiso en tiempo de ejecución. */
+/** Un permiso o ajuste que la alarma necesita y la pantalla de Ajustes donde se concede. */
 data class PermItem(
     val id: String,
     val title: String,
     val description: String,
     val granted: Boolean,
-    val intent: Intent?,
+    val intent: Intent,
 )
 
 object PermissionUtils {
@@ -38,7 +38,8 @@ object PermissionUtils {
                 ID_NOTIFICATIONS, "Notificaciones",
                 "Necesarias para que la alarma aparezca a pantalla completa.",
                 ContextCompat.checkSelfPermission(context, POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED,
-                null
+                // El ajuste de la app y no el diálogo: tras dos «No permitir», Android deja de mostrar el diálogo.
+                Intent(Settings.ACTION_APP_NOTIFICATION_SETTINGS).putExtra(Settings.EXTRA_APP_PACKAGE, context.packageName)
             )
         }
         if (Build.VERSION.SDK_INT >= 31) {

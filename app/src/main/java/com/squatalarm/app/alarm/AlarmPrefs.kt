@@ -87,6 +87,15 @@ class AlarmPrefs(context: Context) {
         get() = sp.getLong("ringing_since", 0L)
         set(v) = sp.edit().putLong("ringing_since", v).apply()
 
+    /** Sonando de verdad: si el proceso se detuvo a la fuerza, is_ringing queda en true con una hora vieja. */
+    fun ringingActive(now: Long = System.currentTimeMillis()): Boolean =
+        isRinging && now - ringingSince in 0L..safetyTimeoutMin * 60_000L
+
+    /** Volumen de alarma antes de sonar (-1 = nada que restaurar). Persistido: sobrevive a un reinicio a media alarma. */
+    var volumeBefore: Int
+        get() = sp.getInt("volume_before", -1)
+        set(v) = sp.edit().putInt("volume_before", v).apply()
+
     var scheduledAt: Long
         get() = sp.getLong("scheduled_at", 0L)
         set(v) = sp.edit().putLong("scheduled_at", v).apply()

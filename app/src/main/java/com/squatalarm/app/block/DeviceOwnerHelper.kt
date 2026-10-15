@@ -24,4 +24,19 @@ object DeviceOwnerHelper {
             }
         } catch (e: Exception) { }
     }
+
+    fun isOwner(context: Context): Boolean = try {
+        context.getSystemService(DevicePolicyManager::class.java).isDeviceOwnerApp(context.packageName)
+    } catch (e: Exception) {
+        false
+    }
+
+    /** Sale del modo. `adb shell dpm remove-active-admin` solo sirve con apps testOnly, no con el APK de Releases. */
+    @Suppress("DEPRECATION")
+    fun clear(context: Context): Boolean = try {
+        context.getSystemService(DevicePolicyManager::class.java).clearDeviceOwnerApp(context.packageName)
+        true
+    } catch (e: Exception) {
+        false
+    }
 }

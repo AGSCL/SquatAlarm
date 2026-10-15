@@ -21,10 +21,10 @@
         android:supportsRtl="true"
         android:theme="@style/Theme.SquatAlarm">
 
-        <!-- configChanges: girar el teléfono durante la preconfiguración no reinicia la pantalla ni borra el progreso -->
+        <!-- configChanges: girar el teléfono o cambiar el tema durante la preconfiguración no borra el progreso -->
         <activity
             android:name=".MainActivity"
-            android:configChanges="orientation|screenSize|screenLayout|smallestScreenSize|keyboardHidden"
+            android:configChanges="orientation|screenSize|screenLayout|smallestScreenSize|keyboardHidden|uiMode"
             android:exported="true"
             android:launchMode="singleTask">
             <intent-filter>
@@ -33,9 +33,11 @@
             </intent-filter>
         </activity>
 
-        <!-- Pantalla de alarma: tarea propia, sobre la pantalla de bloqueo, fuera de Recientes -->
+        <!-- Pantalla de alarma: tarea propia, sobre la pantalla de bloqueo, fuera de Recientes.
+             configChanges: un cambio de tema a media alarma no reinicia el conteo de sentadillas -->
         <activity
             android:name=".alarm.AlarmActivity"
+            android:configChanges="uiMode|orientation|screenSize|screenLayout|smallestScreenSize|keyboardHidden"
             android:excludeFromRecents="true"
             android:exported="false"
             android:launchMode="singleInstance"

@@ -3,6 +3,7 @@ package com.squatalarm.app.block
 import android.accessibilityservice.AccessibilityService
 import android.accessibilityservice.AccessibilityServiceInfo
 import android.os.SystemClock
+import android.telecom.TelecomManager
 import android.view.accessibility.AccessibilityEvent
 import android.view.accessibility.AccessibilityNodeInfo
 import com.squatalarm.app.alarm.AlarmPrefs
@@ -37,9 +38,18 @@ class PowerMenuBlockerService : AccessibilityService() {
 
     override fun onAccessibilityEvent(event: AccessibilityEvent?) {
         event ?: return
-        if (!AlarmService.isRunning && !AlarmPrefs(this).isRinging) return
+        if (!AlarmService.isRunning && !AlarmPrefs(this).ringingActive()) return
         val pkg = event.packageName?.toString() ?: ""
         if (pkg == packageName) return
+        if (pkg == "com.android.phone" || pkg == getSystemService(TelecomManager::class.java)?.defaultDialerPackage) {
+            // Marcador o llamada (también la de emergencia): la alarma sigue sonando pero no lo tapa por 2 min.
+            AlarmService.dialerPauseUntil = SystemClock.elapsedRealtime() + DIALER_PAUSE_MS
+            return
+        }
+        // Salió del marcador a otra app: la pausa es solo para llamar, la alarma vuelve al frente.
+        if (event.eventType == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED && pkg != "com.android.systemui") {
+            AlarmService.dialerPauseUntil = 0L
+        }
 
         val cls = event.className?.toString() ?: ""
         var powerMenu = CLASS_HINTS.any { cls.contains(it, ignoreCase = true) }
@@ -94,11 +104,11 @@ class PowerMenuBlockerService : AccessibilityService() {
     companion object {
         private const val MAX_NODES = 250
         private const val SCAN_EVERY_MS = 250L
+        private const val DIALER_PAUSE_MS = 120_000L
         private val CLASS_HINTS = listOf("GlobalActions", "PowerMenu", "ShutdownMenu", "PowerOff")
         private val KEYWORDS = listOf(
             "power off", "apagar", "shut down", "shutdown", "switch off", "turn off",
             "restart", "reiniciar", "reinicio", "reboot",
-            "emergency", "emergencia",
             "lockdown", "bloqueo total", "safe mode", "modo seguro",
             "global_actions", "globalactions", "power_menu", "powermenu",
             "desligar", "éteindre", "ausschalten", "spegni",

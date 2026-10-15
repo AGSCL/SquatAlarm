@@ -1,5 +1,6 @@
 package com.squatalarm.app
 
+import android.content.res.Configuration
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.enableEdgeToEdge
@@ -11,6 +12,7 @@ import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import com.squatalarm.app.alarm.AlarmScheduler
 import com.squatalarm.app.ui.PreconfigScreen
 import com.squatalarm.app.ui.HomeScreen
 import com.squatalarm.app.ui.PermissionsScreen
@@ -25,11 +27,19 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge() // íconos de la barra de estado legibles en tema claro (Android 15 dibuja bajo las barras)
+        // Re-registra la alarma: «Forzar detención» (o un limpiador del fabricante) borra las alarmas de la app.
+        AlarmScheduler.schedule(this)
         setContent {
             SquatAlarmTheme {
                 AppRoot(resumeTick = resumeTick.intValue)
             }
         }
+    }
+
+    /** configChanges incluye uiMode (tema oscuro): Compose se actualiza solo; las barras del sistema, aquí. */
+    override fun onConfigurationChanged(newConfig: Configuration) {
+        super.onConfigurationChanged(newConfig)
+        enableEdgeToEdge()
     }
 
     override fun onResume() {

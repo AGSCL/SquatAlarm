@@ -88,8 +88,15 @@ class SquatCounter(
             }
             State.DESCENDING -> {
                 if (a < -thresholdDown) {
-                    // Lóbulo negativo nuevo (tras una pausa) reinicia el reloj; un re-cruce breve no.
-                    if (t - tLastBelow > NEW_LOBE_GAP_MS) tDown = t
+                    // Lóbulo negativo nuevo (tras una pausa) reinicia el ciclo entero (reloj, pico e inclinación de
+                    // referencia, como al salir de IDLE); un re-cruce breve no. Si no, la sentadilla que sigue a tomar
+                    // el teléfono se mediría contra la orientación de ese gesto.
+                    if (t - tLastBelow > NEW_LOBE_GAP_MS) {
+                        tDown = t
+                        negPeak = a
+                        g0x = gx; g0y = gy; g0z = gz
+                        minCos = 1f
+                    }
                     tLastBelow = t
                     if (a < negPeak) negPeak = a
                 }
