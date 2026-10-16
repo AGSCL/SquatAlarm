@@ -238,5 +238,83 @@ require(RingPlan.untilText(30_000L) == "1 min" && RingPlan.untilText(45 * 60_000
 require(RingPlan.untilText(7 * 3_600_000L + 22 * 60_000L + 1) == "7 h 23 min" && RingPlan.untilText(-5L) == "0 min")
 require(RingPlan.volumeIndex(0.05f, 7) == 1 && RingPlan.volumeIndex(0f, 15) == 1) { "nunca muda" }
 
+// 11) Aprendizaje desde las alarmas: índice de θ, persistencia, peso 0,2 y regla «claramente mejor»
+for (i in listOf(0, BayesTuner.N - 1, tuner.bestIndex(0.5), 12345, 200_001)) {
+    require(BayesTuner.indexOf(BayesTuner.calibration(i)) == i) { "indexOf(calibration($i))" }
+}
+require(BayesTuner.indexOf(Calibration.DEFAULT) == -1) { "los valores por defecto no están en la grilla" }
+val saved = java.io.ByteArrayOutputStream().also { tuner.write(it) }.toByteArray()
+fun loadTuner() = BayesTuner.read(java.io.ByteArrayInputStream(saved))!!
+run {
+    val back = loadTuner()
+    require(back.windowMs == tuner.windowMs) { "ventana guardada" }
+    for (i in probe) {
+        val a = tuner.posterior(i)
+        val b = back.posterior(i)
+        require(a.aS == b.aS && a.bS == b.bS && a.aE == b.aE && a.bE == b.bE) { "posterior θ#$i ida y vuelta" }
+    }
+    require(BayesTuner.read(java.io.ByteArrayInputStream(ByteArray(16))) == null) { "archivo ajeno → null" }
+}
+val i0 = tuner.bestIndex(0.5)
+val softSquats = segment("Alarma", true, 10, squats(10, amp = 1.0f))
+require(Tuner.replay(softSquats, BayesTuner.calibration(i0)) < 10) { "la θ de la preconfiguración no ve estas sentadillas suaves" }
+run {
+    val full = loadTuner().also { it.add(softSquats, 0.5, 1f) }
+    val fifth = loadTuner().also { it.add(softSquats, 0.5, Tuner.ALARM_EVIDENCE) }
+    val dFull = full.posterior(i0).bS - tuner.posterior(i0).bS
+    val dFifth = fifth.posterior(i0).bS - tuner.posterior(i0).bS
+    require(dFull > 0 && near(dFifth, 0.2 * dFull, 1e-3)) { "una alarma suma 0,2 de un tramo: $dFifth vs $dFull" }
+}
+require(!Tuner.clearlyBetter(tuner.posterior(i0), tuner.posterior(i0), 0.5)) { "igual → no" }
+require(Tuner.clearlyBetter(Posterior(101.0, 1.0, 101.0, 1.0), Posterior(51.0, 51.0, 51.0, 51.0), 0.5)) { "mucho mejor → sí" }
+require(!Tuner.clearlyBetter(Posterior(4.0, 1.0, 4.0, 1.0), Posterior(3.0, 2.0, 3.0, 2.0), 0.5)) { "con poca evidencia → no" }
+run {
+    // Enfriamiento: la preconfiguración pesa más; una alarma distinta no mueve θ, varias consistentes sí.
+    val learner = loadTuner()
+    var switchedAt = -1
+    for (k in 1..60) {
+        val seg = segment("Alarma $k", true, 10, squats(10, amp = 1.0f))
+        val new = Tuner.learnFromAlarm(learner, seg, 0.5, i0)
+        if (new != null) {
+            switchedAt = k
+            require(Tuner.replay(seg, BayesTuner.calibration(new)) == 10) { "la θ nueva cuenta las sentadillas suaves" }
+            require(steps.filter { it.positive }.all { Tuner.replay(it, BayesTuner.calibration(new)) == 10 }) { "y sigue contando las de la preconfiguración" }
+            break
+        }
+    }
+    println("Aprendizaje: la θ cambia recién en la alarma $switchedAt (cada una pesa ${Tuner.ALARM_EVIDENCE})")
+    require(switchedAt > 1) { "una sola alarma no debe cambiar los parámetros (switch en $switchedAt)" }
+}
+
+run {
+    val s = segment("recorte", true, 0, noise(10, 0.1f))
+    val n = s.size
+    s.dropBefore(5_000L)
+    require(s.startMs == 5_000L && s.size == n / 2 && Tuner.replay(s, Calibration.DEFAULT) == 0) { "dropBefore: ${s.startMs} ${s.size}" }
+    s.dropBefore(0L)
+    require(s.size == n / 2) { "dropBefore antes del inicio no hace nada" }
+}
+
+// 12) Registro de mañanas: CSV, horas en cama y resumen
+require(CheckIn.hoursInBed(23 * 60 + 30, 7 * 60) == 7.5 && CheckIn.hoursInBed(60, 7 * 60) == 6.0) { "cruza la medianoche" }
+run {
+    val r = CheckIn("2026-10-16", "07:00", 1L, 3.25, "sentadillas", 9, 10, 1, true, false, "23:30", 7.5, null, "cambió: bajada 1,3 → 1,1")
+    val back = CheckIn.parse(r.toCsv())!!
+    require(back == r.copy(minutesToDismiss = 3.3, learned = "cambió: bajada 1;3 → 1;1")) { "ida y vuelta: $back" }
+    require(CheckIn.parse(CheckIn.HEADER) == null && CheckIn.parse("basura") == null) { "encabezado y basura → null" }
+    val blank = CheckIn("2026-10-17", "07:00", 2L, 1.0, "sensor", null, null, null, null, null, null, null, null, "")
+    require(CheckIn.parse(blank.toCsv()) == blank) { "sin responder → null de vuelta" }
+    val rows = listOf(
+        r, r.copy(mood = -1, minutesToDismiss = 5.0), r.copy(alcohol = false, mood = 1, minutesToDismiss = 1.0, hoursInBed = 6.0),
+        blank,
+    )
+    val alc = MorningSummary.factors(rows).first { it.name == "Alcohol" }
+    require(alc.yes.n == 2 && near(alc.yes.mood!!, 0.0) && near(alc.yes.minutes!!, 4.125)) { "alcohol sí" }
+    require(alc.no.n == 1 && alc.no.mood == 1.0 && alc.no.minutes == 1.0) { "alcohol no" }
+    val sleep = MorningSummary.factors(rows).first { it.name.startsWith("7 h") }
+    require(sleep.yes.n == 2 && sleep.no.n == 1) { "horas en cama" }
+    require(MorningSummary.factors(rows).first { it.name == "Estrés" }.yes.n == 0) { "sin respuestas → grupo vacío" }
+}
+
 println("CORE OK")
 tasks.register("coreTest") { doLast { println("coreTest: todos los asserts pasaron") } }

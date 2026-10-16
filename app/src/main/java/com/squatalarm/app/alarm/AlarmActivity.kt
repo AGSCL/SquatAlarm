@@ -1,6 +1,7 @@
 package com.squatalarm.app.alarm
 
 import android.app.ActivityManager
+import android.content.Intent
 import android.os.Build
 import android.os.Bundle
 import android.view.KeyEvent
@@ -14,12 +15,20 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
+import com.squatalarm.app.squat.Segment
 import com.squatalarm.app.squat.SquatCounter
 import com.squatalarm.app.squat.SquatDetector
 import com.squatalarm.app.ui.AlarmScreen
+import com.squatalarm.app.ui.Answers
+import com.squatalarm.app.ui.CheckInScreen
 import com.squatalarm.app.ui.rejectText
+import com.squatalarm.app.ui.vetoSummary
 import com.squatalarm.app.util.PermissionUtils
 import kotlinx.coroutines.delay
+import java.text.SimpleDateFormat
+import java.util.Calendar
+import java.util.Date
+import java.util.Locale
 
 /**
  * Pantalla de alarma: se muestra sobre el bloqueo, fija la pantalla (bloquea Inicio/Recientes),
@@ -36,6 +45,17 @@ class AlarmActivity : ComponentActivity(), SquatDetector.Listener {
     private val done = mutableIntStateOf(0)
     private val aVert = mutableFloatStateOf(0f)
     private val rejection = mutableStateOf("")
+    private var testRing = false
+    private var ringStart = 0L
+    /** Sensores de los últimos minutos, para aprender de esta alarma. */
+    private val recording = Segment("Alarma", true)
+
+    /** Registro de la mañana tras apagarla ([askSquats]: la apagaron las sentadillas). */
+    private class Ended(val askSquats: Boolean, val counted: Int, val at: Long)
+    private val ended = mutableStateOf<Ended?>(null)
+    private val saving = mutableStateOf(false)
+    private val result = mutableStateOf<String?>(null)
+    private var logged = false
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -48,9 +68,16 @@ class AlarmActivity : ComponentActivity(), SquatDetector.Listener {
         setupWindow()
         required = prefs.squatsRequired
         sensorText = if (PermissionUtils.sensorMissionReady(this)) prefs.sensorText else null
+        testRing = prefs.isTestRing
+        ringStart = prefs.ringingSince
         val det = SquatDetector.fromPrefs(this, prefs, this)
+        det.recorder = { a, t, x, y, z ->
+            recording.add(a, t, x, y, z)
+            if (t - recording.startMs > 2 * MorningLog.ALARM_WINDOW_MS) recording.dropBefore(t - MorningLog.ALARM_WINDOW_MS)
+        }
         detector = det
-        onBackPressedDispatcher.addCallback(this) { /* Atrás bloqueado */ }
+        // Atrás bloqueado mientras suena; en el registro equivale a «Omitir».
+        onBackPressedDispatcher.addCallback(this) { if (ended.value != null && !saving.value) skip() }
         if (!AlarmService.isRunning) AlarmService.start(this)
         val showEscape = prefs.isTestRing || (sensorText == null && !det.isAvailable)
         val loudAt = if (prefs.softStart) prefs.ringingSince + RingPlan.SOFT_MS + RingPlan.SILENT_MS else 0L
@@ -59,10 +86,26 @@ class AlarmActivity : ComponentActivity(), SquatDetector.Listener {
             LaunchedEffect(Unit) {
                 while (!finished) {
                     delay(1000L)
-                    if (!prefs.isRinging && !finished) dismiss()
+                    if (!prefs.isRinging && !finished) dismiss(bySquats = false)
                 }
             }
+            val e = ended.value
+            // Un registro olvidado no queda abierto para siempre: a los 10 min se guarda lo automático.
+            if (e != null) LaunchedEffect(e) { delay(10 * 60_000L); if (result.value == null && !saving.value) skip() }
             MaterialTheme(colorScheme = darkColorScheme()) {
+                if (e != null) {
+                    CheckInScreen(
+                        askSquats = e.askSquats,
+                        counted = e.counted,
+                        defaultBedMin = prefs.lastBedtimeMin,
+                        saving = saving.value,
+                        result = result.value,
+                        onSave = { save(it) },
+                        onSkip = { skip() },
+                        onClose = { finishAndRemoveTask() },
+                    )
+                    return@MaterialTheme
+                }
                 AlarmScreen(
                     required = required,
                     done = done.intValue,
@@ -74,7 +117,7 @@ class AlarmActivity : ComponentActivity(), SquatDetector.Listener {
                     sensorText = sensorText,
                     showEscape = showEscape,
                     loudAt = loudAt,
-                    onEscape = { dismiss() },
+                    onEscape = { dismiss(bySquats = false) },
                 )
             }
         }
@@ -98,7 +141,7 @@ class AlarmActivity : ComponentActivity(), SquatDetector.Listener {
     override fun onSquat(count: Int, squat: SquatCounter.Squat) {
         done.intValue = count
         rejection.value = ""
-        if (count >= required && !finished) dismiss()
+        if (count >= required && !finished) dismiss(bySquats = true)
     }
 
     override fun onRejected(squat: SquatCounter.Squat) {
@@ -109,19 +152,98 @@ class AlarmActivity : ComponentActivity(), SquatDetector.Listener {
         this.aVert.floatValue = aVert
     }
 
-    private fun dismiss() {
+    /**
+     * Apaga la alarma. Si era real (no la prueba ni el apagado de seguridad), muestra el registro de la mañana;
+     * [bySquats]: la apagaron las sentadillas, así que pregunta cuántas fueron de verdad y aprende.
+     */
+    private fun dismiss(bySquats: Boolean) {
+        if (finished) return
         finished = true
         detector?.stop()
         stopLockTaskSafe()
         AlarmService.stop(this)
+        val timedOut = System.currentTimeMillis() - ringStart >= prefs.safetyTimeoutMin * 60_000L
+        if (testRing || timedOut) {
+            finishAndRemoveTask()
+            return
+        }
+        ended.value = Ended(bySquats, done.intValue, System.currentTimeMillis())
+    }
+
+    private fun save(answers: Answers) {
+        val e = ended.value ?: return
+        if (logged) return
+        logged = true
+        saving.value = true
+        // Aprender re-analiza ~3 min de sensores con todas las θ (unos segundos): fuera del hilo principal.
+        Thread {
+            val learned = if (e.askSquats && answers.real != null) MorningLog.learn(this, recording, answers.real, e.counted) else ""
+            writeRow(e, answers, learned)
+            answers.bedMin?.let { prefs.lastBedtimeMin = it }
+            val msg = buildString {
+                append("Registro guardado.")
+                if (learned.isNotEmpty()) append("\nDetección: ").append(learned)
+                if (learned.startsWith("cambió")) append("\n").append(vetoSummary(prefs.calibration))
+            }
+            runOnUiThread {
+                result.value = msg
+                saving.value = false
+            }
+        }.start()
+    }
+
+    /** Omitir: guarda solo lo automático (hora, minutos hasta apagarla, conteo) y cierra. */
+    private fun skip() {
+        val e = ended.value
+        if (e != null && !logged) {
+            logged = true
+            try { writeRow(e, Answers(null, null, null, null, null, null), "") } catch (x: Exception) { }
+        }
         finishAndRemoveTask()
     }
 
+    private fun writeRow(e: Ended, a: Answers, learned: String) {
+        val cal = Calendar.getInstance().apply { timeInMillis = ringStart }
+        val ringMin = cal.get(Calendar.HOUR_OF_DAY) * 60 + cal.get(Calendar.MINUTE)
+        MorningLog.append(
+            this,
+            CheckIn(
+                date = SimpleDateFormat("yyyy-MM-dd", Locale.US).format(Date(ringStart)),
+                time = CheckIn.hhmm(ringMin),
+                ringAt = ringStart,
+                minutesToDismiss = (e.at - ringStart) / 60_000.0,
+                mission = if (sensorText != null) "sensor" else "sentadillas",
+                counted = if (e.askSquats) e.counted else null,
+                real = a.real,
+                mood = a.mood,
+                alcohol = a.alcohol,
+                smoked = a.smoked,
+                bedtime = a.bedMin?.let(CheckIn::hhmm),
+                hoursInBed = a.bedMin?.let { CheckIn.hoursInBed(it, ringMin) },
+                stressed = a.stressed,
+                learned = learned,
+            ),
+        )
+    }
+
+    /** Si suena otra alarma con el registro anterior aún abierto, la pantalla se rehace para la alarma nueva. */
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        if (finished && prefs.ringingActive()) recreate()
+    }
+
     /** Volumen, cámara y botones multimedia no hacen nada mientras suena. */
-    override fun dispatchKeyEvent(event: KeyEvent): Boolean = when (event.keyCode) {
-        KeyEvent.KEYCODE_VOLUME_DOWN, KeyEvent.KEYCODE_VOLUME_UP, KeyEvent.KEYCODE_VOLUME_MUTE,
-        KeyEvent.KEYCODE_CAMERA, KeyEvent.KEYCODE_HEADSETHOOK, KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE -> true
+    override fun dispatchKeyEvent(event: KeyEvent): Boolean = when {
+        finished -> super.dispatchKeyEvent(event)
+        event.keyCode in BLOCKED_KEYS -> true
         else -> super.dispatchKeyEvent(event)
+    }
+
+    private companion object {
+        val BLOCKED_KEYS = setOf(
+            KeyEvent.KEYCODE_VOLUME_DOWN, KeyEvent.KEYCODE_VOLUME_UP, KeyEvent.KEYCODE_VOLUME_MUTE,
+            KeyEvent.KEYCODE_CAMERA, KeyEvent.KEYCODE_HEADSETHOOK, KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE,
+        )
     }
 
     private fun setupWindow() {

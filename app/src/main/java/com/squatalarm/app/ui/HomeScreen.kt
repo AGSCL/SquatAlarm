@@ -59,6 +59,8 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import com.squatalarm.app.alarm.AlarmPrefs
 import com.squatalarm.app.alarm.AlarmScheduler
+import com.squatalarm.app.alarm.MorningLog
+import com.squatalarm.app.alarm.MorningSummary
 import com.squatalarm.app.alarm.RingPlan
 import com.squatalarm.app.alarm.SensorMatch
 import com.squatalarm.app.alarm.SensorNotificationListener
@@ -148,6 +150,16 @@ fun HomeScreen(resumeTick: Int, onCalibrate: () -> Unit, onTest: () -> Unit, onP
                 false
             }
             toast(if (ok) "Parámetros exportados" else "No se pudo exportar")
+        }
+    }
+    val csvLauncher = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("text/csv")) { uri ->
+        if (uri != null) {
+            val ok = try {
+                context.contentResolver.openOutputStream(uri)?.use { it.write(MorningLog.logFile(context).readBytes()) } != null
+            } catch (e: Exception) {
+                false
+            }
+            toast(if (ok) "Registro exportado" else "No se pudo exportar")
         }
     }
     val importLauncher = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
@@ -362,6 +374,38 @@ fun HomeScreen(resumeTick: Int, onCalibrate: () -> Unit, onTest: () -> Unit, onP
                 )
             }
 
+            val rows = remember(resumeTick) { MorningLog.rows(context) }
+            val hasPosterior = remember(resumeTick) { MorningLog.hasPosterior(context) }
+            SectionCard("Registro de mañanas") {
+                Text(
+                    when {
+                        !st.calibration.calibrated -> "Preconfigura para que la detección aprenda de tus alarmas."
+                        !hasPosterior -> "Para que la detección aprenda de tus alarmas, preconfigura una vez más: " +
+                            "las preconfiguraciones anteriores no guardaban la evidencia."
+                        else -> "Aprendió de ${prefs.learnedAlarms} alarmas. Cada una pesa 0,2 de un paso de la preconfiguración " +
+                            "y la detección solo cambia si la mejora es muy clara (≈97,5 % de probabilidad)."
+                    },
+                    style = MaterialTheme.typography.bodySmall,
+                )
+                if (rows.isEmpty()) {
+                    Text("Aún no hay registros: al apagar cada alarma real te preguntará cómo amaneciste.", style = MaterialTheme.typography.bodySmall)
+                } else {
+                    Text(
+                        "${rows.size} mañanas. Por factor (sí · no): mañanas, ánimo de −1 ☹ a +1 🙂 y minutos hasta apagarla.",
+                        style = MaterialTheme.typography.bodySmall,
+                    )
+                    MorningSummary.factors(rows).forEach { f ->
+                        Text("${f.name}: sí ${groupText(f.yes)} · no ${groupText(f.no)}")
+                    }
+                    if (rows.size < 10) {
+                        Text("Con menos de 10 mañanas, las diferencias son sobre todo azar.", style = MaterialTheme.typography.bodySmall)
+                    }
+                    OutlinedButton(onClick = { csvLauncher.launch("squatalarm-registro.csv") }, modifier = Modifier.fillMaxWidth()) {
+                        Text("Exportar registro (CSV)")
+                    }
+                }
+            }
+
             SectionCard("Respaldo de parámetros") {
                 Text(
                     "Al instalar una versión nueva encima de la anterior, los parámetros se conservan. " +
@@ -417,6 +461,10 @@ fun HomeScreen(resumeTick: Int, onCalibrate: () -> Unit, onTest: () -> Unit, onP
         }
     }
 }
+
+private fun groupText(g: MorningSummary.Group): String =
+    if (g.n == 0) "—"
+    else "${g.n} (ánimo ${g.mood?.let { "%+.1f".format(it) } ?: "—"}, ${g.minutes?.let { "%.1f".format(it) } ?: "—"} min)"
 
 /** Sonido de una fase (selector de tonos del sistema, de [type]) y su volumen, como fracción del máximo de alarma. */
 @Composable

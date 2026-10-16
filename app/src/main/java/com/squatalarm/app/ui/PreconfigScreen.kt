@@ -48,6 +48,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import com.squatalarm.app.alarm.AlarmPrefs
+import com.squatalarm.app.alarm.MorningLog
 import com.squatalarm.app.squat.BayesTuner
 import com.squatalarm.app.squat.Calibration
 import com.squatalarm.app.squat.Counts
@@ -204,6 +205,7 @@ fun PreconfigScreen(onDone: () -> Unit) {
             valSpec = validation?.spec?.toFloat() ?: -1f,
         )
         prefs.strictness = 1f
+        prefs.calWeight = st.weight
     }
 
     LaunchedEffect(st.phase) {
@@ -250,6 +252,9 @@ fun PreconfigScreen(onDone: () -> Unit) {
                 val result = withContext(Dispatchers.Default) {
                     st.tuner.add(seg, w)
                     if (last) {
+                        // Evidencia base para aprender de las alarmas (cada una pesa 0,2 de un paso de aquí).
+                        try { MorningLog.savePosterior(context, st.tuner) } catch (e: Exception) { } // sin esto solo no aprende de alarmas
+                        prefs.learnedAlarms = 0
                         val (cal, post) = st.tuner.best(w)
                         Triple(cal, post, Tuner.evaluate(st.tuner.segments, Calibration.DEFAULT, st.tuner.windowMs).posterior())
                     } else {

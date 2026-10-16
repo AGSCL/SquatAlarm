@@ -16,6 +16,7 @@ object PrefsCodec {
         "cal_max_peak" to 'f', "cal_tilt_min" to 'f', "cal_tilt_max" to 'f', "cal_done" to 'b', "cal_n" to 'i',
         "cal_sens" to 'f', "cal_spec" to 'f', "cal_val_sens" to 'f', "cal_val_spec" to 'f',
         "soft_start" to 'b', "sound_soft" to 's', "sound_loud" to 's', "volume_soft" to 'f', "volume_loud" to 'f',
+        "cal_weight" to 'f',
     )
 
     /**
@@ -28,7 +29,7 @@ object PrefsCodec {
         "cal_thr_down" to 0.1..10.0, "cal_thr_up" to 0.1..10.0, "cal_min_cycle" to 0.0..5000.0, "cal_max_cycle" to 500.0..20000.0,
         "cal_max_peak" to 0.1..1000.0, /* 1000 = sin límite */ "cal_tilt_min" to 0.0..180.0, "cal_tilt_max" to 0.0..180.0,
         "cal_n" to 0.0..10000.0, "cal_sens" to -1.0..1.0, "cal_spec" to -1.0..1.0, "cal_val_sens" to -1.0..1.0, "cal_val_spec" to -1.0..1.0,
-        "volume_soft" to 0.05..0.6, "volume_loud" to 0.3..1.0,
+        "volume_soft" to 0.05..0.6, "volume_loud" to 0.3..1.0, "cal_weight" to 0.1..0.9,
     )
 
     fun encode(values: Map<String, *>): String = buildString {

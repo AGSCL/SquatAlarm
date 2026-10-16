@@ -56,6 +56,21 @@ class AlarmPrefs(context: Context) {
         get() = sp.getString("sensor_text", "") ?: ""
         set(v) = sp.edit().putString("sensor_text", v).apply()
 
+    /** Peso de la sensibilidad (w) elegido en la preconfiguración; lo usa también el aprendizaje desde las alarmas. */
+    var calWeight: Float
+        get() = sp.getFloat("cal_weight", 0.5f)
+        set(v) = sp.edit().putFloat("cal_weight", v).apply()
+
+    /** Alarmas de las que aprendió desde la última preconfiguración. */
+    var learnedAlarms: Int
+        get() = sp.getInt("learned_alarms", 0)
+        set(v) = sp.edit().putInt("learned_alarms", v).apply()
+
+    /** Última hora de acostarse registrada (minutos desde las 00:00): la propone en el registro siguiente. */
+    var lastBedtimeMin: Int
+        get() = sp.getInt("last_bedtime_min", 23 * 60)
+        set(v) = sp.edit().putInt("last_bedtime_min", v).apply()
+
     /** Hora, app y texto de la última notificación que apagó la alarma (diagnóstico; no se exporta). */
     var sensorLastHit: String
         get() = sp.getString("sensor_last_hit", "") ?: ""

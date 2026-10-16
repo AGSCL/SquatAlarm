@@ -33,6 +33,26 @@ muestra cuánto falta, y las sentadillas (o el sensor) la apagan en cualquier fa
 volumen de cada fase (el volumen es una fracción del máximo de alarma y se reimpone mientras suena; la alarma completa
 no baja de 30 %). El apagado de seguridad cuenta desde el inicio suave.
 
+## Registro de mañanas y aprendizaje
+
+Al apagar una alarma real (no la de prueba ni el apagado de seguridad) aparece, sobre la misma pantalla, un registro
+de un toque por pregunta: sentadillas que hiciste de verdad (propone las contadas), cómo te sientes (🙂 😐 ☹), si
+ayer tomaste alcohol o fumaste, a qué hora te acostaste (propone la de la vez anterior; ±15 min) y si te acostaste
+con estrés. Tocar una opción elegida la desmarca; lo no respondido queda en blanco; «Omitir» (o Atrás) guarda solo lo
+automático (hora y minutos hasta apagarla). Si la apagó el sensor, no pregunta sentadillas.
+
+- **Aprendizaje:** las sentadillas declaradas y los últimos 3 min de sensores se suman a los posteriores de la
+  preconfiguración con **peso 0,2** (una alarma vale la quinta parte de un paso de preconfiguración, que así «enfría»
+  los cambios). La detección cambia sola solo si otra combinación es **claramente mejor**: probabilidad posterior
+  ≈ 97,5 % de mayor utilidad (aproximación normal, conservadora). En las pruebas automáticas, ni una alarma en que los
+  parámetros no vieron ninguna sentadilla los cambia; recién la tercera seguida. Si cambian, la validación anterior
+  queda como «sin validar». Las preconfiguraciones hechas antes de esta versión no guardaban la evidencia: hay que
+  preconfigurar una vez más para que aprenda.
+- **Resumen en la app** (tarjeta «Registro de mañanas»): por alcohol, tabaco, estrés y 7 h o más en cama, cuántas
+  mañanas, ánimo medio (−1 a +1) y minutos hasta apagarla. **Exportar registro (CSV)**: una fila por mañana
+  (`fecha, hora, inicio_ms, minutos_hasta_apagar, mision, contadas, reales, animo, alcohol, tabaco, acostarse,
+  horas_en_cama, estres, aprendizaje`). Todo queda en el teléfono.
+
 ## Misión alternativa: caminar hasta un sensor de movimiento
 
 En **Para apagar la alarma**, elige «Caminar hasta un sensor de movimiento». La alarma se apaga cuando llega una

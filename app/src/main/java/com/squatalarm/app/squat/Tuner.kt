@@ -4,7 +4,9 @@ import kotlin.math.PI
 import kotlin.math.abs
 import kotlin.math.exp
 import kotlin.math.ln
+import kotlin.math.roundToInt
 import kotlin.math.sin
+import kotlin.math.sqrt
 
 /** Un tramo grabado en la preconfiguración: señal + orientación + lo que el usuario dijo que hizo. */
 class Segment(val name: String, val positive: Boolean) {
@@ -26,6 +28,16 @@ class Segment(val name: String, val positive: Boolean) {
 
     fun add(aRaw: Float, time: Long, ux: Float, uy: Float, uz: Float) {
         a.add(aRaw); t.add(time); gx.add(ux); gy.add(uy); gz.add(uz)
+    }
+
+    val startMs: Long get() = if (t.isEmpty()) 0L else t[0]
+
+    /** Descarta las muestras anteriores a [fromMs] (la alarma solo aprende de sus últimos minutos). */
+    fun dropBefore(fromMs: Long) {
+        val k = t.indexOfFirst { it >= fromMs }.let { if (it < 0) t.size else it }
+        if (k == 0) return
+        for (list in listOf(a, t, gx, gy, gz)) list.subList(0, k).clear()
+        cached = -1
     }
 
     // Copias primitivas para el replay (miles de pasadas): se rehacen solo si el tramo creció.
@@ -79,6 +91,8 @@ class Posterior(val aS: Double, val bS: Double, val aE: Double, val bE: Double) 
     val hasNeg: Boolean get() = aE + bE > 2.0
     fun sensCrI(): Pair<Double, Double> = BetaDist.quantile(0.025, aS, bS) to BetaDist.quantile(0.975, aS, bS)
     fun specCrI(): Pair<Double, Double> = BetaDist.quantile(0.025, aE, bE) to BetaDist.quantile(0.975, aE, bE)
+    val sensVar: Double get() = aS * bS / ((aS + bS) * (aS + bS) * (aS + bS + 1.0))
+    val specVar: Double get() = aE * bE / ((aE + bE) * (aE + bE) * (aE + bE + 1.0))
     fun probSensAtLeast(x: Double): Double = 1.0 - BetaDist.cdf(x, aS, bS)
     fun probSpecAtLeast(x: Double): Double = 1.0 - BetaDist.cdf(x, aE, bE)
 }
@@ -168,13 +182,14 @@ class BayesTuner {
 
     class Snapshot(val step: String, val calibration: Calibration, val posterior: Posterior)
 
-    private val tp = IntArray(N)
-    private val fn = IntArray(N)
-    private val fp = IntArray(N)
-    private val tn = IntArray(N)
+    // Conteos por θ; fraccionarios porque cada alarma suma con peso [Tuner.ALARM_EVIDENCE].
+    private val tp = FloatArray(N)
+    private val fn = FloatArray(N)
+    private val fp = FloatArray(N)
+    private val tn = FloatArray(N)
 
-    /** Incorpora un tramo con su verdad declarada y actualiza todos los posteriores. */
-    fun add(seg: Segment, weight: Double) {
+    /** Incorpora un tramo con su verdad declarada y actualiza todos los posteriores ([evidence] = peso del tramo). */
+    fun add(seg: Segment, weight: Double, evidence: Float = 1f) {
         if (windowMs == 0L && seg.positive && seg.truth > 0) {
             windowMs = (seg.durationMs / seg.truth).coerceIn(1000L, 5000L)
         }
@@ -202,23 +217,41 @@ class BayesTuner {
                 }
                 val i = b * N_VETO + v
                 val fpSeg = maxOf(d - truth, 0)
-                tp[i] += minOf(d, truth)
-                fn[i] += maxOf(truth - d, 0)
-                fp[i] += fpSeg
-                tn[i] += maxOf(seg.negWindows - fpSeg, 0)
+                tp[i] += evidence * minOf(d, truth)
+                fn[i] += evidence * maxOf(truth - d, 0)
+                fp[i] += evidence * fpSeg
+                tn[i] += evidence * maxOf(seg.negWindows - fpSeg, 0)
             }
         }
         segments.add(seg)
         val i = bestIndex(weight)
-        history.add(Snapshot(seg.name, calibration(i), counts(i).posterior()))
+        history.add(Snapshot(seg.name, calibration(i), posterior(i)))
     }
 
-    fun counts(i: Int) = Counts(tp[i], fn[i], fp[i], tn[i])
+    /** Conteos enteros (solo exactos mientras todo tramo sume con peso 1, como en la preconfiguración). */
+    fun counts(i: Int) = Counts(tp[i].roundToInt(), fn[i].roundToInt(), fp[i].roundToInt(), tn[i].roundToInt())
+
+    fun posterior(i: Int) = Posterior(1.0 + tp[i], 1.0 + fn[i], 1.0 + tn[i], 1.0 + fp[i])
+
+    /** Guarda los posteriores (conteos por θ y ventana) para seguir aprendiendo de las alarmas. */
+    fun write(out: java.io.OutputStream) {
+        val d = java.io.DataOutputStream(out)
+        d.writeInt(FORMAT)
+        d.writeInt(N)
+        d.writeLong(windowMs)
+        val buf = java.nio.ByteBuffer.allocate(4 * N)
+        for (arr in arrayOf(tp, fn, fp, tn)) {
+            buf.clear()
+            buf.asFloatBuffer().put(arr)
+            d.write(buf.array())
+        }
+        d.flush()
+    }
 
     /** Mejor θ a posteriori para el peso [weight] de la sensibilidad (instantáneo: no re-analiza). */
     fun best(weight: Double): Pair<Calibration, Posterior> {
         val i = bestIndex(weight)
-        val post = counts(i).posterior()
+        val post = posterior(i)
         val nSquats = segments.filter { it.positive }.sumOf { it.truth }
         return calibration(i).copy(calibrated = true, nSquats = nSquats, sens = post.sens.toFloat(), spec = post.spec.toFloat()) to post
     }
@@ -250,6 +283,33 @@ class BayesTuner {
         val TILT_MINS = floatArrayOf(0f, 5f, 10f, 20f)
         val TILT_MAXS = floatArrayOf(180f, 90f, 60f, 45f, 30f)
         const val DEFAULT_WINDOW_MS = 2500L
+        private const val FORMAT = 1
+
+        /** Lee lo guardado con [write]; null si es de otra versión de la grilla de parámetros. */
+        fun read(input: java.io.InputStream): BayesTuner? {
+            val d = java.io.DataInputStream(input)
+            if (d.readInt() != FORMAT || d.readInt() != N) return null
+            val t = BayesTuner()
+            t.windowMs = d.readLong()
+            val bytes = ByteArray(4 * N)
+            for (arr in arrayOf(t.tp, t.fn, t.fp, t.tn)) {
+                d.readFully(bytes)
+                java.nio.ByteBuffer.wrap(bytes).asFloatBuffer().get(arr)
+            }
+            return t
+        }
+
+        /** Posición de [c] en la grilla de θ, o -1 si no está (p. ej. los valores por defecto). */
+        fun indexOf(c: Calibration): Int {
+            val iD = THRESHOLDS.indexOf(c.thresholdDown)
+            val iU = THRESHOLDS.indexOf(c.thresholdUp)
+            val iC = MIN_CYCLES.indexOf(c.minCycleMs)
+            val iP = PEAKS.indexOfFirst { it == c.maxPeak }
+            val iMin = TILT_MINS.indexOfFirst { it == c.tiltMinDeg }
+            val iMax = TILT_MAXS.indexOfFirst { it == c.tiltMaxDeg }
+            if (listOf(iD, iU, iC, iP, iMin, iMax).any { it < 0 } || c.maxCycleMs != MAX_CYCLE_MS) return -1
+            return ((iD * N_T + iU) * N_CYC + iC) * N_VETO + (iP * N_TMIN + iMin) * N_TMAX + iMax
+        }
 
         private val N_T = THRESHOLDS.size
         private val N_CYC = MIN_CYCLES.size
@@ -292,6 +352,27 @@ class BayesTuner {
 object Tuner {
     /** Umbrales permisivos para contar en vivo antes de tener datos. */
     val PERMISSIVE = Calibration(0.45f, 0.45f, 250L, 5000L)
+    /** Peso de cada alarma frente a un tramo de preconfiguración (elegido por el usuario). */
+    const val ALARM_EVIDENCE = 0.2f
+    /** z para «claramente mejor»: probabilidad posterior ≈ 97,5 % de que la θ nueva tiene más utilidad. */
+    const val CLEAR_Z = 1.96
+
+    /**
+     * ¿[new] es claramente mejor que [cur] en utilidad w·S + (1−w)·E? Aproximación normal con posteriores
+     * independientes: como salen de los mismos datos, la varianza real es menor y la regla es conservadora.
+     */
+    fun clearlyBetter(new: Posterior, cur: Posterior, w: Double, z: Double = CLEAR_Z): Boolean {
+        val mean = w * (new.sens - cur.sens) + (1 - w) * (new.spec - cur.spec)
+        val sd = sqrt(w * w * (new.sensVar + cur.sensVar) + (1 - w) * (1 - w) * (new.specVar + cur.specVar))
+        return mean > 0 && mean >= z * sd
+    }
+
+    /** Suma una alarma (peso [evidence]) y devuelve la θ nueva solo si es claramente mejor que [cur]. */
+    fun learnFromAlarm(tuner: BayesTuner, seg: Segment, weight: Double, cur: Int, evidence: Float = ALARM_EVIDENCE): Int? {
+        tuner.add(seg, weight, evidence)
+        val best = tuner.bestIndex(weight)
+        return best.takeIf { it != cur && clearlyBetter(tuner.posterior(it), tuner.posterior(cur), weight) }
+    }
     const val VALIDATION_MIN_SENS = 0.8
     const val VALIDATION_MIN_SPEC = 0.9
 
