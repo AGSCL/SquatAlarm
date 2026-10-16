@@ -24,6 +24,14 @@ se instala encima del anterior sin desinstalar. Requisitos: Android 8.0+ (API 26
 5. Hora, días, número de sentadillas y **apagado de seguridad** (minutos tras los que se apaga sola si la detección
    fallara; es la única salida sin sentadillas). Activar el interruptor.
 
+## Inicio suave y sonidos
+
+Para no despertar a otros, con **Sonido → Inicio suave** (activado de fábrica) la alarma empieza con 90 s de
+vibración y sonido bajo, sigue con 2 min de silencio y recién a los 3½ min suena completa. La pantalla de alarma
+muestra cuánto falta, y las sentadillas (o el sensor) la apagan en cualquier fase. Se puede elegir el sonido y el
+volumen de cada fase (el volumen es una fracción del máximo de alarma y se reimpone mientras suena; la alarma completa
+no baja de 30 %). El apagado de seguridad cuenta desde el inicio suave.
+
 ## Misión alternativa: caminar hasta un sensor de movimiento
 
 En **Para apagar la alarma**, elige «Caminar hasta un sensor de movimiento». La alarma se apaga cuando llega una
@@ -32,10 +40,11 @@ SwitchBot «sensor espacios: Movimiento detectado» si el sensor está en la coc
 
 1. **Revisar permisos** → concede **Acceso a notificaciones**. Si sale «Ajuste restringido», usa el mismo
    procedimiento de abajo.
-2. **Elegir la notificación del sensor**: aparecen las notificaciones visibles. Toca la del sensor; si no está, pasa
-   frente a él y la nueva aparecerá en la lista. Se guardan la app y el texto, y el texto se puede editar. Por
-   ejemplo, «Movimiento detectado» acepta cualquier sensor de esa app, mientras que «sensor espacios» acepta solo
-   ese.
+2. **Escribe el texto de la notificación** (p. ej. «Movimiento detectado») y, si quieres, la app del sensor
+   (p. ej. `com.theswitchbot.switchbot`; vacía = cualquier app con ese texto). **O elígela de las notificaciones**:
+   aparecen las visibles; si la del sensor no está, pasa frente a él y la nueva aparecerá en la lista; se llenan
+   la app y el texto, que se pueden editar. Por ejemplo, «Movimiento detectado» acepta cualquier sensor de esa app,
+   mientras que «sensor espacios» acepta solo ese.
 3. **Probar alarma en 10 s** y camina hasta el sensor.
 
 La app lee la notificación con el permiso estándar de Android (`NotificationListenerService`). No captura la
@@ -171,12 +180,13 @@ Si no ves la opción, busca «restringidos» en el buscador de Ajustes; algunas 
 - `squat/Tuner.kt`: `BayesTuner` (posteriores por combinación, actualización por paso), `BetaDist` (CDF y cuantiles
   exactos), conteos por ventanas.
 - `squat/SquatDetector.kt`: capa de sensores (gravedad + aceleración lineal; respaldo con acelerómetro).
-- `alarm/`: `setAlarmClock` → servicio en primer plano (sonido de alarma a volumen máximo, vibración, wakelock) →
+- `alarm/`: `setAlarmClock` → servicio en primer plano (fases de `RingPlan`: suave, silencio y completa; sonido,
+  volumen y vibración de cada fase; wakelock) →
   pantalla sobre el bloqueo, fijada (`startLockTask`). Atrás y volumen no hacen nada. Un vigilante la vuelve a traer
   al frente, salvo durante una llamada o con el marcador abierto (para poder llamar a emergencias; la alarma sigue
   sonando).
 - `block/PowerMenuBlockerService` (accesibilidad): cierra el menú de apagado en cuanto aparece. Si el teléfono igual
-  se reinicia (botón de encendido 10+ s), la alarma vuelve a sonar al encender y desbloquear. Para el bloqueo total
+  se reinicia (botón de encendido 10+ s), la alarma vuelve a sonar al encender, aun sin desbloquear. Para el bloqueo total
   del menú, ver «device owner» abajo.
 
 ### Bloqueo al 100 % (opcional, avanzado)
@@ -189,7 +199,7 @@ tarjeta solo aparece en este modo); `adb shell dpm remove-active-admin` no funci
 ## Pruebas y herramientas
 
 - `core-check/run.sh`: compila el código puro (contador, vetos, motor bayesiano, Beta, archivo de respaldo, regla
-  del sensor) con el Kotlin embebido de Gradle y
+  del sensor, fases del inicio suave) con el Kotlin embebido de Gradle y
   corre las pruebas con señales sintéticas. Verifica que los vetos atrapan los brazos, que los cuantiles coinciden con
   SciPy, que la actualización incremental coincide con la evaluación desde cero y que el peso actúa en la dirección
   correcta. Solo necesita `gradle`.
@@ -200,7 +210,8 @@ tarjeta solo aparece en este modo); `adb shell dpm remove-active-admin` no funci
 - Ningún sensor del teléfono puede impedir del todo la trampa: quien mueva el teléfono con los brazos **imitando a la
   vez** amplitud, ritmo e inclinación del torso puede engañarlo. Las falsaciones miden cuán difícil es; «solo brazos,
   lento» es la más exigente.
-- Tras un reinicio, Android avisa a la app recién al **primer desbloqueo** (si el teléfono tiene PIN o huella). Si se
-  reinicia de noche (p. ej. una actualización del sistema) y nadie lo desbloquea, la alarma no suena hasta desbloquearlo.
+- Tras un reinicio (p. ej. una actualización de noche), la alarma se reprograma y suena **aunque nadie haya puesto el
+  PIN** (Direct Boot). Hasta ese primer desbloqueo, si el sonido elegido no está disponible suena el predeterminado o
+  un pitido incluido en la app, y la misión del sensor se reemplaza por sentadillas (la app del sensor aún no corre).
 - Algunas capas de fabricante (Xiaomi, Huawei) matan servicios en segundo plano: concede «sin restricción de batería»
   y, si existe, «inicio automático».

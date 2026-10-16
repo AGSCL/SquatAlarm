@@ -53,6 +53,7 @@ class AlarmActivity : ComponentActivity(), SquatDetector.Listener {
         onBackPressedDispatcher.addCallback(this) { /* Atrás bloqueado */ }
         if (!AlarmService.isRunning) AlarmService.start(this)
         val showEscape = prefs.isTestRing || (sensorText == null && !det.isAvailable)
+        val loudAt = if (prefs.softStart) prefs.ringingSince + RingPlan.SOFT_MS + RingPlan.SILENT_MS else 0L
         setContent {
             // Se cierra sola si la alarma se apagó por otra vía (sensor o apagado de seguridad).
             LaunchedEffect(Unit) {
@@ -72,6 +73,7 @@ class AlarmActivity : ComponentActivity(), SquatDetector.Listener {
                     rejection = rejection.value,
                     sensorText = sensorText,
                     showEscape = showEscape,
+                    loudAt = loudAt,
                     onEscape = { dismiss() },
                 )
             }

@@ -12,6 +12,7 @@ import android.media.AudioFocusRequest
 import android.media.AudioManager
 import android.media.MediaPlayer
 import android.media.RingtoneManager
+import android.net.Uri
 import android.os.Build
 import android.os.Handler
 import android.os.IBinder
@@ -29,8 +30,8 @@ import com.squatalarm.app.R
 import com.squatalarm.app.util.PermissionUtils
 
 /**
- * Servicio en primer plano que hace sonar la alarma a volumen máximo, vibra, mantiene la
- * pantalla encendida y vuelve a traer [AlarmActivity] al frente si deja de verse.
+ * Servicio en primer plano que hace sonar la alarma (con inicio suave opcional, ver [RingPlan]), vibra,
+ * mantiene la pantalla encendida y vuelve a traer [AlarmActivity] al frente si deja de verse.
  */
 class AlarmService : Service() {
 
@@ -41,6 +42,12 @@ class AlarmService : Service() {
     private var startedAt = 0L
     private var safetyTimeoutMs = AlarmPrefs.DEFAULT_SAFETY_TIMEOUT_MIN * 60_000L
     private var ringing = false
+    private var phase: RingPlan.Phase? = null
+    private var soundUri = ""
+    private val attrs = AudioAttributes.Builder()
+        .setUsage(AudioAttributes.USAGE_ALARM)
+        .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
+        .build()
 
     private val watchdog = object : Runnable {
         override fun run() {
@@ -50,6 +57,7 @@ class AlarmService : Service() {
                 stopSelf()
                 return
             }
+            applyPhase()
             ensureVolume()
             ensurePlaying()
             if (!activityVisible && !phoneInUse(this@AlarmService)) {
@@ -99,9 +107,13 @@ class AlarmService : Service() {
         startedAt = prefs.ringingSince.takeIf { it > 0L } ?: System.currentTimeMillis()
         safetyTimeoutMs = prefs.safetyTimeoutMin * 60_000L
         acquireWakeLock()
+        try {
+            val req = AudioFocusRequest.Builder(AudioManager.AUDIOFOCUS_GAIN_TRANSIENT).setAudioAttributes(attrs).build()
+            getSystemService(AudioManager::class.java).requestAudioFocus(req)
+            focusRequest = req
+        } catch (e: Exception) { }
+        applyPhase()
         ensureVolume()
-        startPlayer()
-        startVibration()
         // Si suena en plena llamada no tapa la pantalla de llamada; el vigilante la trae al colgar o al cambiar de app.
         if (inCall(this)) dialerPauseUntil = SystemClock.elapsedRealtime() + DIALER_PAUSE_MS
         else bringToFront(this, repostNotification = false)
@@ -112,13 +124,10 @@ class AlarmService : Service() {
         ringing = false
         isRunning = false
         handler.removeCallbacksAndMessages(null)
-        try { player?.stop() } catch (e: Exception) { }
-        try { player?.release() } catch (e: Exception) { }
-        player = null
-        val am = getSystemService(AudioManager::class.java)
-        focusRequest?.let { try { am.abandonAudioFocusRequest(it) } catch (e: Exception) { } }
+        stopSound()
+        phase = null
+        focusRequest?.let { try { getSystemService(AudioManager::class.java).abandonAudioFocusRequest(it) } catch (e: Exception) { } }
         focusRequest = null
-        try { vibrator()?.cancel() } catch (e: Exception) { }
         restoreVolume(this)
         dialerPauseUntil = 0L
         wakeLock?.let { if (it.isHeld) it.release() }
@@ -127,38 +136,65 @@ class AlarmService : Service() {
         stopForeground(STOP_FOREGROUND_REMOVE)
     }
 
+    /** Pasa a la fase que corresponde según el tiempo sonando: cambia sonido y vibración solo al cambiar de fase. */
+    private fun applyPhase() {
+        val prefs = AlarmPrefs(this)
+        val elapsed = System.currentTimeMillis() - startedAt
+        val p = RingPlan.phaseAt(elapsed, prefs.softStart)
+        if (p == phase) return
+        phase = p
+        stopSound()
+        when (p) {
+            RingPlan.Phase.SOFT -> { soundUri = prefs.soundSoft; startPlayer(); startVibration(SOFT_VIBRATION) }
+            RingPlan.Phase.SILENT -> {}
+            RingPlan.Phase.LOUD -> { soundUri = prefs.soundLoud; startPlayer(); startVibration(LOUD_VIBRATION) }
+        }
+        // El cambio de fase llega a su hora exacta, no en el siguiente chequeo del vigilante (hasta 4 s después).
+        val next = when (p) {
+            RingPlan.Phase.SOFT -> RingPlan.SOFT_MS
+            RingPlan.Phase.SILENT -> RingPlan.SOFT_MS + RingPlan.SILENT_MS
+            RingPlan.Phase.LOUD -> return
+        }
+        handler.postDelayed({ if (ringing) { applyPhase(); ensureVolume() } }, (next - elapsed).coerceAtLeast(0L))
+    }
+
+    private fun stopSound() {
+        try { player?.stop() } catch (e: Exception) { }
+        try { player?.release() } catch (e: Exception) { }
+        player = null
+        try { vibrator()?.cancel() } catch (e: Exception) { }
+    }
+
+    /** Volumen de la fase (elegido por el usuario); se reimpone cada 4 s: los botones de volumen no lo cambian. */
     private fun ensureVolume() {
+        val prefs = AlarmPrefs(this)
+        val fraction = when (phase) {
+            RingPlan.Phase.SOFT -> prefs.volumeSoft
+            RingPlan.Phase.LOUD -> prefs.volumeLoud
+            else -> return
+        }
         try {
             val am = getSystemService(AudioManager::class.java)
-            val max = am.getStreamMaxVolume(AudioManager.STREAM_ALARM)
             val cur = am.getStreamVolume(AudioManager.STREAM_ALARM)
-            val prefs = AlarmPrefs(this)
             if (prefs.volumeBefore < 0) prefs.volumeBefore = cur
-            if (cur < max) am.setStreamVolume(AudioManager.STREAM_ALARM, max, 0)
+            val target = RingPlan.volumeIndex(fraction, am.getStreamMaxVolume(AudioManager.STREAM_ALARM))
+            if (cur != target) am.setStreamVolume(AudioManager.STREAM_ALARM, target, 0)
         } catch (e: Exception) { }
     }
 
     private fun startPlayer() {
-        val attrs = AudioAttributes.Builder()
-            .setUsage(AudioAttributes.USAGE_ALARM)
-            .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
-            .build()
-        try {
-            val req = AudioFocusRequest.Builder(AudioManager.AUDIOFOCUS_GAIN_TRANSIENT)
-                .setAudioAttributes(attrs)
-                .build()
-            getSystemService(AudioManager::class.java).requestAudioFocus(req)
-            focusRequest = req
-        } catch (e: Exception) { }
         val candidates = listOfNotNull(
+            // Antes del primer desbloqueo, un sonido elegido puede no estar disponible: siguen los de respaldo.
+            soundUri.takeIf { it.isNotEmpty() }?.let(Uri::parse),
             RingtoneManager.getDefaultUri(RingtoneManager.TYPE_ALARM),
             Settings.System.DEFAULT_ALARM_ALERT_URI,
             RingtoneManager.getDefaultUri(RingtoneManager.TYPE_RINGTONE),
             RingtoneManager.getDefaultUri(RingtoneManager.TYPE_NOTIFICATION),
+            Uri.parse("android.resource://$packageName/${R.raw.alarm_fallback}"), // incluido en la app: siempre disponible
         )
         for (uri in candidates) {
+            val mp = MediaPlayer()
             try {
-                val mp = MediaPlayer()
                 mp.setAudioAttributes(attrs)
                 mp.setDataSource(this, uri)
                 mp.isLooping = true
@@ -167,11 +203,14 @@ class AlarmService : Service() {
                 mp.start()
                 player = mp
                 return
-            } catch (e: Exception) { }
+            } catch (e: Exception) {
+                mp.release() // si no, cada intento fallido deja un reproductor nativo abierto
+            }
         }
     }
 
     private fun ensurePlaying() {
+        if (phase == null || phase == RingPlan.Phase.SILENT) return
         val p = player
         if (p == null) {
             startPlayer()
@@ -192,10 +231,10 @@ class AlarmService : Service() {
         getSystemService(Context.VIBRATOR_SERVICE) as? Vibrator
     }
 
-    private fun startVibration() {
+    private fun startVibration(pattern: LongArray) {
         val v = vibrator() ?: return
         try {
-            val effect = VibrationEffect.createWaveform(longArrayOf(0L, 700L, 500L), 0)
+            val effect = VibrationEffect.createWaveform(pattern, 0)
             if (Build.VERSION.SDK_INT >= 33) {
                 v.vibrate(effect, VibrationAttributes.createForUsage(VibrationAttributes.USAGE_ALARM))
             } else {
@@ -231,6 +270,8 @@ class AlarmService : Service() {
         private const val NOTIF_ID_FS = 43
         private const val ACTION_STOP = "com.squatalarm.app.action.STOP_SERVICE"
         private const val WATCHDOG_MS = 4_000L
+        private val SOFT_VIBRATION = longArrayOf(0L, 400L, 1600L)
+        private val LOUD_VIBRATION = longArrayOf(0L, 700L, 500L)
         private const val WAKELOCK_TIMEOUT_MS = 3L * 60 * 60 * 1000
 
         @Volatile var isRunning = false

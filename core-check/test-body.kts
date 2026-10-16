@@ -186,14 +186,17 @@ require(PrefsCodec.decode(PrefsCodec.HEADER + "\nsensor_text=a=b").getValue("sen
 require(rejects(PrefsCodec.HEADER + "\nstrictness=0")) { "exigencia 0 contaría cualquier movimiento → rechazar" }
 require(rejects(PrefsCodec.HEADER + "\nsquats_required=100000")) { "sentadillas fuera de rango → rechazar" }
 require(rejects(PrefsCodec.HEADER + "\nsafety_timeout_min=0") && rejects(PrefsCodec.HEADER + "\nhour=24")) { "rangos de la interfaz" }
+require(rejects(PrefsCodec.HEADER + "\nvolume_loud=0") && rejects(PrefsCodec.HEADER + "\nvolume_soft=0.61")) { "la alarma fuerte no puede quedar muda" }
 require(PrefsCodec.decode("\uFEFF" + PrefsCodec.HEADER + "\r\nhour=6\r\n") == mapOf("hour" to 6)) { "BOM y fin de línea de Windows" }
 run {
     // Todo lo que la app puede guardar (extremos de la interfaz y del tuner) se puede volver a importar.
     val extremes = listOf(
         mapOf("hour" to 0, "minute" to 59, "repeat_days" to 127, "squats_required" to 3, "strictness" to 0.5f,
-            "safety_timeout_min" to 180, "mission" to 0, "cal_sens" to -1f, "cal_tilt_max" to 180f),
+            "safety_timeout_min" to 180, "mission" to 0, "cal_sens" to -1f, "cal_tilt_max" to 180f,
+            "volume_soft" to 0.6f, "volume_loud" to 0.3f, "soft_start" to true, "sound_soft" to "content://media/internal/audio/media/7"),
         mapOf("hour" to 23, "minute" to 0, "repeat_days" to 0, "squats_required" to 40, "strictness" to 1.8f,
-            "safety_timeout_min" to 5, "mission" to 1, "cal_sens" to 1f, "cal_tilt_min" to 0f),
+            "safety_timeout_min" to 5, "mission" to 1, "cal_sens" to 1f, "cal_tilt_min" to 0f,
+            "volume_soft" to 0.05f, "volume_loud" to 1f, "soft_start" to false, "sound_loud" to ""),
     )
     for (m in extremes) require(PrefsCodec.decode(PrefsCodec.encode(m)) == m) { "extremos válidos: $m" }
     for (i in listOf(0, BayesTuner.N - 1, tuner.bestIndex(0.5))) {
@@ -216,7 +219,19 @@ require(SensorMatch.matches(pkg, "SENSOR ESPACIOS: movimiento detectado", "", 20
 require(!SensorMatch.matches(pkg, want, "", 999L, pkg, want, 1000L)) { "anterior al inicio de la alarma → no" }
 require(!SensorMatch.matches("com.whatsapp", want, "", 2000L, pkg, want, 1000L)) { "otra app con el mismo texto → no" }
 require(!SensorMatch.matches(pkg, "sensor pieza: Movimiento detectado", "", 2000L, pkg, want, 1000L)) { "otro sensor → no" }
-require(!SensorMatch.matches(pkg, want, "", 2000L, pkg, "  ", 1000L) && !SensorMatch.matches(pkg, want, "", 2000L, "", want, 1000L)) { "sin configurar → nunca" }
+require(!SensorMatch.matches(pkg, want, "", 2000L, pkg, "  ", 1000L) && !SensorMatch.matches(pkg, want, "", 2000L, "", "", 1000L)) { "sin texto → nunca" }
+require(SensorMatch.matches("com.otra.app", want, "", 2000L, "", "movimiento detectado", 1000L)) { "texto escrito a mano sin app → cualquier app" }
+require(!SensorMatch.matches("com.otra.app", "Hola", "", 2000L, "", "movimiento detectado", 1000L)) { "…pero con ese texto" }
+require(!SensorMatch.matches(pkg, want, "", 999L, "", want, 1000L)) { "…y nueva" }
+
+// 10) Inicio suave: 90 s suave, 120 s de silencio, después fuerte; sin inicio suave, fuerte desde el principio
+require(RingPlan.phaseAt(0L, true) == RingPlan.Phase.SOFT && RingPlan.phaseAt(89_999L, true) == RingPlan.Phase.SOFT)
+require(RingPlan.phaseAt(90_000L, true) == RingPlan.Phase.SILENT && RingPlan.phaseAt(209_999L, true) == RingPlan.Phase.SILENT)
+require(RingPlan.phaseAt(210_000L, true) == RingPlan.Phase.LOUD && RingPlan.phaseAt(3_600_000L, true) == RingPlan.Phase.LOUD)
+require(RingPlan.phaseAt(0L, false) == RingPlan.Phase.LOUD) { "sin inicio suave" }
+require(RingPlan.phaseAt(-5_000L, true) == RingPlan.Phase.SOFT) { "reloj atrasado: no salta a fuerte" }
+require(RingPlan.volumeIndex(1f, 7) == 7 && RingPlan.volumeIndex(0.2f, 7) == 1 && RingPlan.volumeIndex(0.5f, 15) == 8)
+require(RingPlan.volumeIndex(0.05f, 7) == 1 && RingPlan.volumeIndex(0f, 15) == 1) { "nunca muda" }
 
 println("CORE OK")
 tasks.register("coreTest") { doLast { println("coreTest: todos los asserts pasaron") } }

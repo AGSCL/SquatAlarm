@@ -46,6 +46,8 @@ fun AlarmScreen(
     /** Misión «ir hasta el sensor»: texto de la notificación esperada; null = sentadillas. */
     sensorText: String?,
     showEscape: Boolean,
+    /** Inicio suave: cuándo empieza la alarma fuerte (0 = sin inicio suave). */
+    loudAt: Long,
     onEscape: () -> Unit,
 ) {
     var now by remember { mutableLongStateOf(System.currentTimeMillis()) }
@@ -65,7 +67,16 @@ fun AlarmScreen(
                 horizontalAlignment = Alignment.CenterHorizontally,
                 verticalArrangement = Arrangement.SpaceBetween,
             ) {
-                Text(timeText, fontSize = 64.sp, color = Color.White, fontWeight = FontWeight.Light)
+                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                    Text(timeText, fontSize = 64.sp, color = Color.White, fontWeight = FontWeight.Light)
+                    val left = (loudAt - now) / 1000
+                    if (left > 0) {
+                        Text(
+                            "Inicio suave · alarma fuerte en %d:%02d".format(left / 60, left % 60),
+                            color = Color.LightGray, fontSize = 16.sp, textAlign = TextAlign.Center,
+                        )
+                    }
+                }
 
                 if (sensorText != null) {
                     Column(horizontalAlignment = Alignment.CenterHorizontally) {

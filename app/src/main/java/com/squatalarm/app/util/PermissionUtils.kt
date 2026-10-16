@@ -9,6 +9,7 @@ import android.content.pm.PackageManager
 import android.net.Uri
 import android.os.Build
 import android.os.PowerManager
+import android.os.UserManager
 import android.provider.Settings
 import androidx.core.app.NotificationManagerCompat
 import androidx.core.content.ContextCompat
@@ -93,13 +94,14 @@ object PermissionUtils {
         NotificationManagerCompat.getEnabledListenerPackages(context).contains(context.packageName)
 
     /**
-     * La misión del sensor solo se usa si está completa (notificación elegida y acceso concedido). Si no,
-     * la alarma se apaga con sentadillas; de lo contrario solo el apagado de seguridad podría pararla.
+     * La misión del sensor solo se usa si está completa (texto de la notificación y acceso concedido) y el
+     * teléfono ya se desbloqueó tras encenderse (antes, la app del sensor no corre). Si no, la alarma se apaga
+     * con sentadillas; de lo contrario solo el apagado de seguridad podría pararla.
      */
     fun sensorMissionReady(context: Context): Boolean {
         val p = AlarmPrefs(context)
-        return p.mission == AlarmPrefs.MISSION_SENSOR && p.sensorPackage.isNotEmpty() && p.sensorText.isNotBlank() &&
-            listenerEnabled(context)
+        return p.mission == AlarmPrefs.MISSION_SENSOR && p.sensorText.isNotBlank() && listenerEnabled(context) &&
+            context.getSystemService(UserManager::class.java).isUserUnlocked
     }
 
     private fun accessibilityEnabled(context: Context): Boolean {

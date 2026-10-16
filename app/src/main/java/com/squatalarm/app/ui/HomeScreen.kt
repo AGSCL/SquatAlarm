@@ -1,6 +1,11 @@
 package com.squatalarm.app.ui
 
+import android.app.Activity
 import android.app.TimePickerDialog
+import android.content.Intent
+import android.media.RingtoneManager
+import android.net.Uri
+import android.provider.Settings
 import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -77,6 +82,11 @@ private class HomeState(prefs: AlarmPrefs) {
     var sensorPackage by mutableStateOf(prefs.sensorPackage)
     var sensorText by mutableStateOf(prefs.sensorText)
     var picking by mutableStateOf(false)
+    var softStart by mutableStateOf(prefs.softStart)
+    var soundSoft by mutableStateOf(prefs.soundSoft)
+    var soundLoud by mutableStateOf(prefs.soundLoud)
+    var volumeSoft by mutableFloatStateOf(prefs.volumeSoft)
+    var volumeLoud by mutableFloatStateOf(prefs.volumeLoud)
 
     fun reload(prefs: AlarmPrefs) {
         enabled = prefs.enabled
@@ -107,6 +117,11 @@ fun HomeScreen(resumeTick: Int, onCalibrate: () -> Unit, onTest: () -> Unit, onP
         prefs.strictness = st.strictness
         prefs.safetyTimeoutMin = st.safetyMin
         prefs.mission = st.mission
+        prefs.softStart = st.softStart
+        prefs.soundSoft = st.soundSoft
+        prefs.soundLoud = st.soundLoud
+        prefs.volumeSoft = st.volumeSoft
+        prefs.volumeLoud = st.volumeLoud
         AlarmScheduler.schedule(context)
         st.nextAt = prefs.scheduledAt
         st.missing = PermissionUtils.missingCount(context)
@@ -235,25 +250,34 @@ fun HomeScreen(resumeTick: Int, onCalibrate: () -> Unit, onTest: () -> Unit, onP
                             "La app la lee con «Acceso a notificaciones»; no hace capturas de pantalla.",
                         style = MaterialTheme.typography.bodySmall,
                     )
-                    if (st.sensorPackage.isNotEmpty()) {
-                        Text("App del sensor: ${st.sensorPackage}", style = MaterialTheme.typography.bodySmall)
-                        OutlinedTextField(
-                            value = st.sensorText,
-                            onValueChange = { st.sensorText = it; prefs.sensorText = it },
-                            label = { Text("Texto que debe traer la notificación") },
-                            singleLine = true,
-                            modifier = Modifier.fillMaxWidth(),
-                        )
-                    }
+                    OutlinedTextField(
+                        value = st.sensorText,
+                        onValueChange = { st.sensorText = it; prefs.sensorText = it },
+                        label = { Text("Texto de la notificación") },
+                        placeholder = { Text("p. ej. Movimiento detectado") },
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+                    OutlinedTextField(
+                        value = st.sensorPackage,
+                        onValueChange = { st.sensorPackage = it.trim(); prefs.sensorPackage = st.sensorPackage },
+                        label = { Text("App del sensor (opcional)") },
+                        placeholder = { Text("p. ej. com.theswitchbot.switchbot") },
+                        supportingText = {
+                            Text(if (st.sensorPackage.isEmpty()) "Vacío: sirve una notificación de cualquier app con ese texto." else "Solo de esa app.")
+                        },
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth(),
+                    )
                     if (!sensorReady) {
                         Text(
-                            "Mientras no elijas la notificación del sensor o falte «Acceso a notificaciones» (Revisar permisos), " +
+                            "Mientras falte el texto de la notificación o «Acceso a notificaciones» (Revisar permisos), " +
                                 "la alarma se apaga con sentadillas.",
                             color = MaterialTheme.colorScheme.error,
                         )
                     }
                     OutlinedButton(onClick = { st.picking = !st.picking }, modifier = Modifier.fillMaxWidth()) {
-                        Text(if (st.picking) "Cancelar" else "Elegir la notificación del sensor")
+                        Text(if (st.picking) "Cancelar" else "O elegirla de las notificaciones")
                     }
                     if (st.picking) {
                         SensorPicker { s ->
@@ -265,6 +289,30 @@ fun HomeScreen(resumeTick: Int, onCalibrate: () -> Unit, onTest: () -> Unit, onP
                         }
                     }
                 }
+            }
+
+            SectionCard("Sonido") {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Column(Modifier.weight(1f)) {
+                        Text("Inicio suave")
+                        Text(
+                            "Para no despertar a otros: 90 s de vibración y sonido bajo, 2 min de silencio y después la alarma " +
+                                "completa (a los 3½ min). Las sentadillas la apagan en cualquier fase.",
+                            style = MaterialTheme.typography.bodySmall,
+                        )
+                    }
+                    Switch(
+                        checked = st.softStart,
+                        onCheckedChange = { st.softStart = it; save() },
+                        modifier = Modifier.semantics { contentDescription = "Inicio suave" },
+                    )
+                }
+                if (st.softStart) {
+                    SoundChoice("Sonido suave", st.soundSoft, st.volumeSoft, 0.05f..0.6f,
+                        onSound = { st.soundSoft = it; save() }, onVolume = { st.volumeSoft = it }, onVolumeDone = { save() })
+                }
+                SoundChoice("Sonido de la alarma", st.soundLoud, st.volumeLoud, 0.3f..1f,
+                    onSound = { st.soundLoud = it; save() }, onVolume = { st.volumeLoud = it }, onVolumeDone = { save() })
             }
 
             SectionCard("Detección de sentadillas") {
@@ -316,7 +364,7 @@ fun HomeScreen(resumeTick: Int, onCalibrate: () -> Unit, onTest: () -> Unit, onP
 
             SectionCard("Prueba completa") {
                 Text(
-                    "Hace sonar la alarma en 10 s con sonido, vibración y bloqueo reales. " +
+                    "Hace sonar la alarma en 10 s con sonido, vibración y bloqueo reales (con inicio suave, si está activado). " +
                         "Bloquea el teléfono y espera. En modo prueba hay un botón para apagarla.",
                     style = MaterialTheme.typography.bodySmall,
                 )
@@ -347,6 +395,55 @@ fun HomeScreen(resumeTick: Int, onCalibrate: () -> Unit, onTest: () -> Unit, onP
             }
         }
     }
+}
+
+/** Sonido de una fase (selector de tonos del sistema) y su volumen, como fracción del máximo de alarma. */
+@Composable
+private fun SoundChoice(
+    label: String,
+    uri: String,
+    volume: Float,
+    range: ClosedFloatingPointRange<Float>,
+    onSound: (String) -> Unit,
+    onVolume: (Float) -> Unit,
+    onVolumeDone: () -> Unit,
+) {
+    val context = LocalContext.current
+    val current = if (uri.isEmpty()) Settings.System.DEFAULT_ALARM_ALERT_URI else Uri.parse(uri)
+    val title = remember(uri) {
+        if (uri.isEmpty()) null else try { RingtoneManager.getRingtone(context, current)?.getTitle(context) } catch (e: Exception) { null }
+    } ?: "Alarma predeterminada"
+    val picker = rememberLauncherForActivityResult(ActivityResultContracts.StartActivityForResult()) { r ->
+        @Suppress("DEPRECATION")
+        val picked = r.data?.getParcelableExtra<Uri>(RingtoneManager.EXTRA_RINGTONE_PICKED_URI)
+        if (r.resultCode == Activity.RESULT_OK && picked != null) onSound(if (picked == Settings.System.DEFAULT_ALARM_ALERT_URI) "" else picked.toString())
+    }
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        Text("$label: $title", modifier = Modifier.weight(1f))
+        OutlinedButton(onClick = {
+            try {
+                picker.launch(
+                    Intent(RingtoneManager.ACTION_RINGTONE_PICKER)
+                        .putExtra(RingtoneManager.EXTRA_RINGTONE_TYPE, RingtoneManager.TYPE_ALL)
+                        .putExtra(RingtoneManager.EXTRA_RINGTONE_TITLE, label)
+                        .putExtra(RingtoneManager.EXTRA_RINGTONE_SHOW_SILENT, false)
+                        .putExtra(RingtoneManager.EXTRA_RINGTONE_SHOW_DEFAULT, true)
+                        .putExtra(RingtoneManager.EXTRA_RINGTONE_DEFAULT_URI, Settings.System.DEFAULT_ALARM_ALERT_URI)
+                        .putExtra(RingtoneManager.EXTRA_RINGTONE_EXISTING_URI, current)
+                )
+            } catch (e: Exception) {
+                Toast.makeText(context, "Este teléfono no tiene selector de sonidos", Toast.LENGTH_LONG).show()
+            }
+        }) { Text("Elegir") }
+    }
+    Text("Volumen: ${pct(volume)}", style = MaterialTheme.typography.bodySmall)
+    Slider(
+        value = volume,
+        onValueChange = { onVolume((it * 20f).roundToInt() / 20f) },
+        onValueChangeFinished = onVolumeDone,
+        valueRange = range,
+        modifier = Modifier.labeled("Volumen de $label", pct(volume)),
+    )
 }
 
 @Composable

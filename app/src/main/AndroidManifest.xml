@@ -37,6 +37,7 @@
              configChanges: un cambio de tema a media alarma no reinicia el conteo de sentadillas -->
         <activity
             android:name=".alarm.AlarmActivity"
+            android:directBootAware="true"
             android:configChanges="uiMode|orientation|screenSize|screenLayout|smallestScreenSize|keyboardHidden"
             android:excludeFromRecents="true"
             android:exported="false"
@@ -47,9 +48,12 @@
             android:theme="@style/Theme.SquatAlarm.Alarm"
             android:turnScreenOn="true" />
 
-        <!-- Suena hasta que se completen las sentadillas; specialUse permite reanudarla tras un reinicio -->
+        <!-- Suena hasta que se completen las sentadillas; specialUse permite reanudarla tras un reinicio.
+             directBootAware (aquí y en los receptores, la pantalla y el bloqueador): tras reiniciar, la alarma
+             se reprograma y suena antes de que alguien ponga el PIN -->
         <service
             android:name=".alarm.AlarmService"
+            android:directBootAware="true"
             android:exported="false"
             android:foregroundServiceType="specialUse">
             <property
@@ -59,12 +63,15 @@
 
         <receiver
             android:name=".alarm.AlarmReceiver"
+            android:directBootAware="true"
             android:exported="false" />
 
         <receiver
             android:name=".alarm.BootReceiver"
+            android:directBootAware="true"
             android:exported="true">
             <intent-filter>
+                <action android:name="android.intent.action.LOCKED_BOOT_COMPLETED" />
                 <action android:name="android.intent.action.BOOT_COMPLETED" />
                 <action android:name="android.intent.action.QUICKBOOT_POWERON" />
                 <action android:name="android.intent.action.MY_PACKAGE_REPLACED" />
@@ -87,6 +94,7 @@
         <!-- Cierra el menú de apagado mientras la alarma suena -->
         <service
             android:name=".block.PowerMenuBlockerService"
+            android:directBootAware="true"
             android:exported="true"
             android:label="@string/accessibility_label"
             android:permission="android.permission.BIND_ACCESSIBILITY_SERVICE">

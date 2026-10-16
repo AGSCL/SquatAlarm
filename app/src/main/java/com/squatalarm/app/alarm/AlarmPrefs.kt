@@ -2,13 +2,13 @@ package com.squatalarm.app.alarm
 
 import android.content.Context
 import android.content.SharedPreferences
+import android.os.UserManager
 import com.squatalarm.app.squat.Calibration
 
-/** Configuración persistente (SharedPreferences). */
+/** Configuración persistente (SharedPreferences en almacenamiento protegido por dispositivo, ver [open]). */
 class AlarmPrefs(context: Context) {
 
-    private val sp: SharedPreferences =
-        context.applicationContext.getSharedPreferences("squat_alarm", Context.MODE_PRIVATE)
+    private val sp: SharedPreferences = open(context.applicationContext)
 
     var enabled: Boolean
         get() = sp.getBoolean("enabled", false)
@@ -54,6 +54,28 @@ class AlarmPrefs(context: Context) {
     var sensorText: String
         get() = sp.getString("sensor_text", "") ?: ""
         set(v) = sp.edit().putString("sensor_text", v).apply()
+
+    /** Inicio suave (ver [RingPlan]): vibración y sonido bajo, silencio y después la alarma completa. */
+    var softStart: Boolean
+        get() = sp.getBoolean("soft_start", true)
+        set(v) = sp.edit().putBoolean("soft_start", v).apply()
+
+    /** URI del sonido de cada fase ("" = alarma predeterminada) y su volumen (fracción del máximo de alarma). */
+    var soundSoft: String
+        get() = sp.getString("sound_soft", "") ?: ""
+        set(v) = sp.edit().putString("sound_soft", v).apply()
+
+    var soundLoud: String
+        get() = sp.getString("sound_loud", "") ?: ""
+        set(v) = sp.edit().putString("sound_loud", v).apply()
+
+    var volumeSoft: Float
+        get() = sp.getFloat("volume_soft", 0.2f)
+        set(v) = sp.edit().putFloat("volume_soft", v).apply()
+
+    var volumeLoud: Float
+        get() = sp.getFloat("volume_loud", 1f)
+        set(v) = sp.edit().putFloat("volume_loud", v).apply()
 
     /** Respaldo de todos los parámetros (no el estado de una alarma sonando). */
     fun exportText(): String = PrefsCodec.encode(sp.all)
@@ -136,5 +158,19 @@ class AlarmPrefs(context: Context) {
         const val DEFAULT_SAFETY_TIMEOUT_MIN = 60
         const val MISSION_SQUATS = 0
         const val MISSION_SENSOR = 1
+        private const val FILE = "squat_alarm"
+        @Volatile private var shared: SharedPreferences? = null
+
+        /**
+         * Almacenamiento protegido por dispositivo: se lee antes del primer desbloqueo tras reiniciar (Direct Boot),
+         * así la alarma se reprograma y suena aunque nadie haya puesto el PIN.
+         */
+        private fun open(app: Context): SharedPreferences {
+            shared?.let { return it }
+            val dp = app.createDeviceProtectedStorageContext()
+            val unlocked = app.getSystemService(UserManager::class.java).isUserUnlocked
+            if (unlocked) dp.moveSharedPreferencesFrom(app, FILE) // trae los parámetros de versiones anteriores (no hace nada si ya se movieron)
+            return dp.getSharedPreferences(FILE, Context.MODE_PRIVATE).also { if (unlocked) shared = it }
+        }
     }
 }

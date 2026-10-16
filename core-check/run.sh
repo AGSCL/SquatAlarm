@@ -8,7 +8,7 @@ SRC=../app/src/main/java/com/squatalarm/app
 mkdir -p build
 {
   echo "import kotlin.math.*"
-  for f in squat/SquatCounter.kt squat/Calibration.kt squat/Tuner.kt alarm/PrefsCodec.kt; do
+  for f in squat/SquatCounter.kt squat/Calibration.kt squat/Tuner.kt alarm/PrefsCodec.kt alarm/RingPlan.kt; do
     grep -v -E '^(package |import kotlin\.math)' "$SRC/$f"
   done
   cat test-body.kts
