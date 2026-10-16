@@ -26,6 +26,8 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.input.pointer.PointerEventPass
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.semantics.LiveRegionMode
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.heading
@@ -59,15 +61,27 @@ fun CheckInScreen(
     onSave: (Answers) -> Unit,
     onSkip: () -> Unit,
     onClose: () -> Unit,
+    onInteract: () -> Unit,
 ) {
     var real by remember { mutableIntStateOf(counted) }
     var mood by remember { mutableStateOf<Int?>(null) }
     var alcohol by remember { mutableStateOf<Boolean?>(null) }
     var smoked by remember { mutableStateOf<Boolean?>(null) }
-    var bedMin by remember { mutableIntStateOf(defaultBedMin) }
+    // null hasta tocarla: si no se toca, queda en blanco (se muestra la anterior como punto de partida).
+    var bedMin by remember { mutableStateOf<Int?>(null) }
     var stressed by remember { mutableStateOf<Boolean?>(null) }
 
-    Surface(Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
+    Surface(
+        Modifier.fillMaxSize().pointerInput(Unit) {
+            awaitPointerEventScope {
+                while (true) {
+                    awaitPointerEvent(PointerEventPass.Initial)
+                    onInteract()
+                }
+            }
+        },
+        color = MaterialTheme.colorScheme.background,
+    ) {
         Column(
             Modifier.fillMaxSize().systemBarsPadding().verticalScroll(rememberScrollState()).padding(20.dp),
             verticalArrangement = Arrangement.spacedBy(20.dp),
@@ -96,10 +110,19 @@ fun CheckInScreen(
             Question("¿Tomaste alcohol ayer?") { Choice(YES_NO, alcohol) { alcohol = it } }
             Question("¿Fumaste ayer?") { Choice(YES_NO, smoked) { smoked = it } }
             Question("¿A qué hora te acostaste?") {
+                val shown = bedMin ?: defaultBedMin
                 Stepper(
-                    text = CheckIn.hhmm(bedMin), less = "15 minutos antes", more = "15 minutos después",
-                    onLess = { bedMin = (bedMin - 15 + 1440) % 1440 }, onMore = { bedMin = (bedMin + 15) % 1440 },
+                    text = CheckIn.hhmm(shown), less = "15 minutos antes", more = "15 minutos después",
+                    onLess = { bedMin = (shown - 15 + 1440) % 1440 }, onMore = { bedMin = (shown + 15) % 1440 },
                 )
+                if (bedMin == null) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text("Sin responder (es la de la vez anterior).", style = MaterialTheme.typography.bodySmall, modifier = Modifier.weight(1f))
+                        TextButton(onClick = { bedMin = shown }) { Text("Me acosté a esta hora") }
+                    }
+                } else {
+                    TextButton(onClick = { bedMin = null }) { Text("Dejar en blanco") }
+                }
             }
             Question("¿Te acostaste con estrés?") { Choice(YES_NO, stressed) { stressed = it } }
 

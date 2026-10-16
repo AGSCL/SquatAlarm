@@ -56,6 +56,8 @@ class AlarmActivity : ComponentActivity(), SquatDetector.Listener {
     private val saving = mutableStateOf(false)
     private val result = mutableStateOf<String?>(null)
     private var logged = false
+    /** Último toque en el registro: el cierre automático cuenta 10 min desde aquí, no desde que se apagó. */
+    private val lastTouch = mutableStateOf(0L)
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -90,8 +92,8 @@ class AlarmActivity : ComponentActivity(), SquatDetector.Listener {
                 }
             }
             val e = ended.value
-            // Un registro olvidado no queda abierto para siempre: a los 10 min se guarda lo automático.
-            if (e != null) LaunchedEffect(e) { delay(10 * 60_000L); if (result.value == null && !saving.value) skip() }
+            // Un registro olvidado no queda abierto para siempre: 10 min sin tocarlo y se cierra (guardando lo automático).
+            if (e != null) LaunchedEffect(e, lastTouch.value) { delay(10 * 60_000L); if (!saving.value) skip() }
             MaterialTheme(colorScheme = darkColorScheme()) {
                 if (e != null) {
                     CheckInScreen(
@@ -103,6 +105,7 @@ class AlarmActivity : ComponentActivity(), SquatDetector.Listener {
                         onSave = { save(it) },
                         onSkip = { skip() },
                         onClose = { finishAndRemoveTask() },
+                        onInteract = { lastTouch.value = System.currentTimeMillis() },
                     )
                     return@MaterialTheme
                 }
@@ -167,6 +170,8 @@ class AlarmActivity : ComponentActivity(), SquatDetector.Listener {
             finishAndRemoveTask()
             return
         }
+        // Ya no suena: la pantalla vuelve a apagarse sola (sobre todo con el sensor, que te dejó lejos del teléfono).
+        window.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
         ended.value = Ended(bySquats, done.intValue, System.currentTimeMillis())
     }
 
@@ -177,13 +182,17 @@ class AlarmActivity : ComponentActivity(), SquatDetector.Listener {
         saving.value = true
         // Aprender re-analiza ~3 min de sensores con todas las θ (unos segundos): fuera del hilo principal.
         Thread {
-            val learned = if (e.askSquats && answers.real != null) MorningLog.learn(this, recording, answers.real, e.counted) else ""
-            writeRow(e, answers, learned)
-            answers.bedMin?.let { prefs.lastBedtimeMin = it }
-            val msg = buildString {
-                append("Registro guardado.")
-                if (learned.isNotEmpty()) append("\nDetección: ").append(learned)
-                if (learned.startsWith("cambió")) append("\n").append(vetoSummary(prefs.calibration))
+            val msg = try {
+                val learned = if (e.askSquats && answers.real != null) MorningLog.learn(this, recording, answers.real, e.counted) else ""
+                writeRow(e, answers, learned)
+                answers.bedMin?.let { prefs.lastBedtimeMin = it }
+                buildString {
+                    append("Registro guardado.")
+                    if (learned.isNotEmpty()) append("\nDetección: ").append(learned)
+                    if (learned.startsWith("cambió")) append("\n").append(vetoSummary(prefs.calibration))
+                }
+            } catch (x: Exception) {
+                "No se pudo guardar el registro (${x.message})." // sin esto, un error de disco cerraría la app
             }
             runOnUiThread {
                 result.value = msg
@@ -194,12 +203,22 @@ class AlarmActivity : ComponentActivity(), SquatDetector.Listener {
 
     /** Omitir: guarda solo lo automático (hora, minutos hasta apagarla, conteo) y cierra. */
     private fun skip() {
-        val e = ended.value
-        if (e != null && !logged) {
-            logged = true
-            try { writeRow(e, Answers(null, null, null, null, null, null), "") } catch (x: Exception) { }
-        }
+        logAutomatic()
         finishAndRemoveTask()
+    }
+
+    /** La fila de la mañana con solo lo automático, si aún no se guardó nada. */
+    private fun logAutomatic() {
+        val e = ended.value ?: return
+        if (logged) return
+        logged = true
+        try { writeRow(e, Answers(null, null, null, null, null, null), "") } catch (x: Exception) { }
+    }
+
+    /** Si el sistema cierra el registro (otra alarma, cambio de configuración), la mañana igual queda anotada. */
+    override fun onDestroy() {
+        logAutomatic()
+        super.onDestroy()
     }
 
     private fun writeRow(e: Ended, a: Answers, learned: String) {
