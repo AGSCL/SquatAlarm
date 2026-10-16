@@ -55,6 +55,11 @@ class AlarmPrefs(context: Context) {
         get() = sp.getString("sensor_text", "") ?: ""
         set(v) = sp.edit().putString("sensor_text", v).apply()
 
+    /** Hora, app y texto de la última notificación que apagó la alarma (diagnóstico; no se exporta). */
+    var sensorLastHit: String
+        get() = sp.getString("sensor_last_hit", "") ?: ""
+        set(v) = sp.edit().putString("sensor_last_hit", v).apply()
+
     /** Inicio suave (ver [RingPlan]): vibración y sonido bajo, silencio y después la alarma completa. */
     var softStart: Boolean
         get() = sp.getBoolean("soft_start", true)
@@ -70,7 +75,7 @@ class AlarmPrefs(context: Context) {
         set(v) = sp.edit().putString("sound_loud", v).apply()
 
     var volumeSoft: Float
-        get() = sp.getFloat("volume_soft", 0.2f)
+        get() = sp.getFloat("volume_soft", 0.3f) // 0,2 daba el paso 1 de 7 en muchos teléfonos: casi inaudible
         set(v) = sp.edit().putFloat("volume_soft", v).apply()
 
     var volumeLoud: Float

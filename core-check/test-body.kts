@@ -231,6 +231,9 @@ require(RingPlan.phaseAt(210_000L, true) == RingPlan.Phase.LOUD && RingPlan.phas
 require(RingPlan.phaseAt(0L, false) == RingPlan.Phase.LOUD) { "sin inicio suave" }
 require(RingPlan.phaseAt(-5_000L, true) == RingPlan.Phase.SOFT) { "reloj atrasado: no salta a fuerte" }
 require(RingPlan.volumeIndex(1f, 7) == 7 && RingPlan.volumeIndex(0.2f, 7) == 1 && RingPlan.volumeIndex(0.5f, 15) == 8)
+require(RingPlan.untilText(7 * 3_600_000L + 23 * 60_000L) == "7 h 23 min" && RingPlan.untilText(3_600_000L) == "1 h")
+require(RingPlan.untilText(30_000L) == "1 min" && RingPlan.untilText(45 * 60_000L) == "45 min") { "minutos hacia arriba" }
+require(RingPlan.untilText(7 * 3_600_000L + 22 * 60_000L + 1) == "7 h 23 min" && RingPlan.untilText(-5L) == "0 min")
 require(RingPlan.volumeIndex(0.05f, 7) == 1 && RingPlan.volumeIndex(0f, 15) == 1) { "nunca muda" }
 
 println("CORE OK")

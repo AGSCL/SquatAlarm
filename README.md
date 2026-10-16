@@ -22,7 +22,8 @@ se instala encima del anterior sin desinstalar. Requisitos: Android 8.0+ (API 26
    (p. ej. «el torso no se inclinó (¿solo brazos?)»).
 4. **Probar alarma en 10 s**, bloquear el teléfono y esperar. En modo prueba hay botón para apagarla; en la real no.
 5. Hora, días, número de sentadillas y **apagado de seguridad** (minutos tras los que se apaga sola si la detección
-   fallara; es la única salida sin sentadillas). Activar el interruptor.
+   fallara; es la única salida sin sentadillas). Activar el interruptor: la app avisa cuánto falta para que suene,
+   y la línea «Próxima» lo sigue mostrando.
 
 ## Inicio suave y sonidos
 
@@ -51,7 +52,10 @@ La app lee la notificación con el permiso estándar de Android (`NotificationLi
 pantalla y no guarda ni envía otras notificaciones; además, la app no tiene permiso de Internet. Limitaciones:
 depende de que el sensor y su app avisen (internet, hub y nube del fabricante); si otra persona pasa frente al
 sensor, también la apaga; si el sensor ya estaba en estado «movimiento», puede no avisar de nuevo hasta que se
-despeje. Si no llega nada, actúa el apagado de seguridad. Si la misión está elegida pero falta la notificación del
+despeje. Las notificaciones persistentes («en curso», como el estado de conexión de una app) se ignoran, porque
+se re-publican al actualizarse y apagarían la alarma apenas empieza. Debajo del texto se ve la última notificación que
+apagó la alarma (hora, app y texto), útil si se apagó antes de lo esperado. Si no llega nada, actúa el apagado de
+seguridad. Si la misión está elegida pero falta la notificación del
 sensor o el «Acceso a notificaciones», la alarma se apaga con sentadillas.
 
 ## Respaldo de parámetros

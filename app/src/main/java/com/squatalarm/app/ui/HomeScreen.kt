@@ -58,6 +58,7 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import com.squatalarm.app.alarm.AlarmPrefs
 import com.squatalarm.app.alarm.AlarmScheduler
+import com.squatalarm.app.alarm.RingPlan
 import com.squatalarm.app.alarm.SensorNotificationListener
 import com.squatalarm.app.block.DeviceOwnerHelper
 import com.squatalarm.app.util.PermissionUtils
@@ -65,6 +66,7 @@ import java.text.SimpleDateFormat
 import java.util.Calendar
 import java.util.Date
 import java.util.Locale
+import kotlinx.coroutines.delay
 import kotlin.math.roundToInt
 
 private class HomeState(prefs: AlarmPrefs) {
@@ -87,12 +89,14 @@ private class HomeState(prefs: AlarmPrefs) {
     var soundLoud by mutableStateOf(prefs.soundLoud)
     var volumeSoft by mutableFloatStateOf(prefs.volumeSoft)
     var volumeLoud by mutableFloatStateOf(prefs.volumeLoud)
+    var sensorLastHit by mutableStateOf(prefs.sensorLastHit)
 
     fun reload(prefs: AlarmPrefs) {
         enabled = prefs.enabled
         calibration = prefs.calibration
         nextAt = prefs.scheduledAt
         strictness = prefs.strictness
+        sensorLastHit = prefs.sensorLastHit
     }
 }
 
@@ -108,7 +112,10 @@ fun HomeScreen(resumeTick: Int, onCalibrate: () -> Unit, onTest: () -> Unit, onP
         st.missing = PermissionUtils.missingCount(context)
     }
 
-    fun save() {
+    fun toast(msg: String) = Toast.makeText(context, msg, Toast.LENGTH_LONG).show()
+
+    /** [announce]: al activar la alarma o cambiar la hora o los días, avisa cuánto falta para que suene. */
+    fun save(announce: Boolean = false) {
         prefs.hour = st.hour
         prefs.minute = st.minute
         prefs.repeatDays = st.days
@@ -125,12 +132,11 @@ fun HomeScreen(resumeTick: Int, onCalibrate: () -> Unit, onTest: () -> Unit, onP
         AlarmScheduler.schedule(context)
         st.nextAt = prefs.scheduledAt
         st.missing = PermissionUtils.missingCount(context)
+        if (announce && st.enabled && st.nextAt > 0L) toast("Sonará en " + RingPlan.untilText(st.nextAt - System.currentTimeMillis()))
     }
 
     // Se recalcula al volver de Ajustes (resumeTick) o al cambiar la misión o el sensor.
     val sensorReady = remember(resumeTick, st.mission, st.sensorPackage, st.sensorText) { PermissionUtils.sensorMissionReady(context) }
-
-    fun toast(msg: String) = Toast.makeText(context, msg, Toast.LENGTH_LONG).show()
 
     val exportLauncher = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("text/plain")) { uri ->
         if (uri != null) {
@@ -159,8 +165,16 @@ fun HomeScreen(resumeTick: Int, onCalibrate: () -> Unit, onTest: () -> Unit, onP
     }
 
     val timeText = String.format(Locale.US, "%02d:%02d", st.hour, st.minute)
+    var now by remember { mutableLongStateOf(System.currentTimeMillis()) }
+    LaunchedEffect(Unit) {
+        while (true) {
+            now = System.currentTimeMillis()
+            delay(20_000L)
+        }
+    }
     val nextText = if (st.enabled && st.nextAt > 0L) {
-        "Próxima: " + SimpleDateFormat("EEEE d MMM, HH:mm", Locale.forLanguageTag("es-CL")).format(Date(st.nextAt))
+        "Próxima: " + SimpleDateFormat("EEEE d MMM, HH:mm", Locale.forLanguageTag("es-CL")).format(Date(st.nextAt)) +
+            " (en ${RingPlan.untilText(st.nextAt - now)})"
     } else {
         "Alarma desactivada"
     }
@@ -190,7 +204,7 @@ fun HomeScreen(resumeTick: Int, onCalibrate: () -> Unit, onTest: () -> Unit, onP
                         modifier = Modifier.clickable(onClickLabel = "cambiar la hora", role = Role.Button) {
                             TimePickerDialog(
                                 context,
-                                { _, h, m -> st.hour = h; st.minute = m; save() },
+                                { _, h, m -> st.hour = h; st.minute = m; save(announce = true) },
                                 st.hour, st.minute, true
                             ).show()
                         },
@@ -198,12 +212,12 @@ fun HomeScreen(resumeTick: Int, onCalibrate: () -> Unit, onTest: () -> Unit, onP
                     Spacer(Modifier.weight(1f))
                     Switch(
                         checked = st.enabled,
-                        onCheckedChange = { st.enabled = it; save() },
+                        onCheckedChange = { st.enabled = it; save(announce = it) },
                         modifier = Modifier.semantics { contentDescription = "Alarma" },
                     )
                 }
                 Text("Toca la hora para cambiarla.", style = MaterialTheme.typography.bodySmall)
-                DaysRow(st.days) { st.days = it; save() }
+                DaysRow(st.days) { st.days = it; save(announce = true) }
                 Text(nextText, style = MaterialTheme.typography.bodyMedium)
                 Text("Sentadillas para apagarla: ${st.squats}")
                 Slider(
@@ -275,6 +289,9 @@ fun HomeScreen(resumeTick: Int, onCalibrate: () -> Unit, onTest: () -> Unit, onP
                                 "la alarma se apaga con sentadillas.",
                             color = MaterialTheme.colorScheme.error,
                         )
+                    }
+                    if (st.sensorLastHit.isNotEmpty()) {
+                        Text("Última notificación que la apagó: ${st.sensorLastHit}", style = MaterialTheme.typography.bodySmall)
                     }
                     OutlinedButton(onClick = { st.picking = !st.picking }, modifier = Modifier.fillMaxWidth()) {
                         Text(if (st.picking) "Cancelar" else "O elegirla de las notificaciones")

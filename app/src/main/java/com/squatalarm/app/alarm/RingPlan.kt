@@ -19,6 +19,18 @@ object RingPlan {
         else -> Phase.SOFT
     }
 
+    /** Cuánto falta para que suene, «7 h 23 min» (minutos hacia arriba: nunca dice «0 min» si falta algo). */
+    fun untilText(ms: Long): String {
+        val min = ((ms + 59_999L) / 60_000L).coerceAtLeast(0L)
+        val h = min / 60
+        val m = min % 60
+        return when {
+            h == 0L -> "$m min"
+            m == 0L -> "$h h"
+            else -> "$h h $m min"
+        }
+    }
+
     /** Volumen elegido (fracción del máximo) → paso del volumen de alarma; nunca 0: la alarma no puede quedar muda. */
     fun volumeIndex(fraction: Float, max: Int): Int = (fraction * max).roundToInt().coerceIn(1, max)
 }

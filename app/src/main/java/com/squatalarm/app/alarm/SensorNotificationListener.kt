@@ -3,6 +3,9 @@ package com.squatalarm.app.alarm
 import android.app.Notification
 import android.service.notification.NotificationListenerService
 import android.service.notification.StatusBarNotification
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
 
 /**
  * Misión «ir hasta el sensor»: apaga la alarma cuando llega una notificación NUEVA (posterior al
@@ -29,6 +32,9 @@ class SensorNotificationListener : NotificationListenerService() {
         if (prefs.isRinging && prefs.mission == AlarmPrefs.MISSION_SENSOR &&
             SensorMatch.matches(seen.pkg, seen.title, seen.text, seen.postTime, prefs.sensorPackage, prefs.sensorText, prefs.ringingSince)
         ) {
+            // Queda a la vista en la app: si se apagó «sola», se ve qué notificación fue.
+            prefs.sensorLastHit = SimpleDateFormat("HH:mm", Locale.getDefault()).format(Date()) +
+                " · ${seen.pkg} · «${"${seen.title} ${seen.text}".trim()}»"
             AlarmService.stop(this) // AlarmActivity lo nota y se cierra
         }
     }
@@ -40,7 +46,10 @@ class SensorNotificationListener : NotificationListenerService() {
 
         fun read(sbn: StatusBarNotification): Seen? {
             val n = sbn.notification
-            if ((n.flags and Notification.FLAG_GROUP_SUMMARY) != 0) return null
+            // Persistentes (en curso o de servicio en primer plano): se re-publican en cada actualización y
+            // apagarían la alarma apenas empieza. Los avisos de movimiento no lo son.
+            val skip = Notification.FLAG_GROUP_SUMMARY or Notification.FLAG_ONGOING_EVENT or Notification.FLAG_FOREGROUND_SERVICE
+            if ((n.flags and skip) != 0) return null
             val title = n.extras.getCharSequence(Notification.EXTRA_TITLE)?.toString().orEmpty()
             val text = n.extras.getCharSequence(Notification.EXTRA_TEXT)?.toString().orEmpty()
             if (title.isBlank() && text.isBlank()) return null
