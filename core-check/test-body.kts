@@ -220,6 +220,8 @@ require(!SensorMatch.matches(pkg, want, "", 999L, pkg, want, 1000L)) { "anterior
 require(!SensorMatch.matches("com.whatsapp", want, "", 2000L, pkg, want, 1000L)) { "otra app con el mismo texto → no" }
 require(!SensorMatch.matches(pkg, "sensor pieza: Movimiento detectado", "", 2000L, pkg, want, 1000L)) { "otro sensor → no" }
 require(!SensorMatch.matches(pkg, want, "", 2000L, pkg, "  ", 1000L) && !SensorMatch.matches(pkg, want, "", 2000L, "", "", 1000L)) { "sin texto → nunca" }
+require(!SensorMatch.matches("com.whatsapp", "Hola", "", 2000L, "", "Hola", 1000L) && !SensorMatch.configured("", "Hola")) { "cualquier app con texto corto → no (se usan sentadillas)" }
+require(SensorMatch.configured(pkg, "Hola") && SensorMatch.matches(pkg, "Hola", "", 2000L, pkg, "Hola", 1000L)) { "con app elegida, el texto corto sirve" }
 require(SensorMatch.matches("com.otra.app", want, "", 2000L, "", "movimiento detectado", 1000L)) { "texto escrito a mano sin app → cualquier app" }
 require(!SensorMatch.matches("com.otra.app", "Hola", "", 2000L, "", "movimiento detectado", 1000L)) { "…pero con ese texto" }
 require(!SensorMatch.matches(pkg, want, "", 999L, "", want, 1000L)) { "…y nueva" }

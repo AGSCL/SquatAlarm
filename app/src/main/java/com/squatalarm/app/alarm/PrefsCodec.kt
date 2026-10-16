@@ -74,8 +74,14 @@ object PrefsCodec {
 
 /** Regla de la misión «ir hasta el sensor»: ¿esta notificación apaga la alarma? */
 object SensorMatch {
+    /** Con cualquier app (sin app elegida) el texto debe ser específico: «a» u «Hola» la apagarían con cualquier aviso. */
+    const val MIN_TEXT_ANY_APP = 6
+
+    fun configured(wantPkg: String, wantText: String): Boolean =
+        wantText.trim().length >= (if (wantPkg.isEmpty()) MIN_TEXT_ANY_APP else 1)
+
     /** [wantPkg] vacío = cualquier app (notificación escrita a mano sin elegir la app). */
     fun matches(pkg: String, title: String, text: String, postTime: Long, wantPkg: String, wantText: String, since: Long): Boolean =
-        wantText.isNotBlank() && (wantPkg.isEmpty() || pkg == wantPkg) && postTime >= since &&
+        configured(wantPkg, wantText) && (wantPkg.isEmpty() || pkg == wantPkg) && postTime >= since &&
             "$title $text".contains(wantText.trim(), ignoreCase = true)
 }

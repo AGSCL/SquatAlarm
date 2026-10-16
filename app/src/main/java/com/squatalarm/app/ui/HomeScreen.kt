@@ -37,6 +37,7 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Slider
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
@@ -59,6 +60,7 @@ import androidx.compose.ui.unit.dp
 import com.squatalarm.app.alarm.AlarmPrefs
 import com.squatalarm.app.alarm.AlarmScheduler
 import com.squatalarm.app.alarm.RingPlan
+import com.squatalarm.app.alarm.SensorMatch
 import com.squatalarm.app.alarm.SensorNotificationListener
 import com.squatalarm.app.block.DeviceOwnerHelper
 import com.squatalarm.app.util.PermissionUtils
@@ -272,17 +274,19 @@ fun HomeScreen(resumeTick: Int, onCalibrate: () -> Unit, onTest: () -> Unit, onP
                         singleLine = true,
                         modifier = Modifier.fillMaxWidth(),
                     )
-                    OutlinedTextField(
-                        value = st.sensorPackage,
-                        onValueChange = { st.sensorPackage = it.trim(); prefs.sensorPackage = st.sensorPackage },
-                        label = { Text("App del sensor (opcional)") },
-                        placeholder = { Text("p. ej. com.theswitchbot.switchbot") },
-                        supportingText = {
-                            Text(if (st.sensorPackage.isEmpty()) "Vacío: sirve una notificación de cualquier app con ese texto." else "Solo de esa app.")
-                        },
-                        singleLine = true,
-                        modifier = Modifier.fillMaxWidth(),
-                    )
+                    // La app no se escribe a mano: un paquete mal escrito haría esperar una notificación que nunca llega.
+                    if (st.sensorPackage.isEmpty()) {
+                        Text(
+                            "Sirve una notificación de cualquier app con ese texto (al menos ${SensorMatch.MIN_TEXT_ANY_APP} letras). " +
+                                "Para aceptar solo la del sensor, elígela de las notificaciones.",
+                            style = MaterialTheme.typography.bodySmall,
+                        )
+                    } else {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Text("Solo de la app ${st.sensorPackage}", style = MaterialTheme.typography.bodySmall, modifier = Modifier.weight(1f))
+                            TextButton(onClick = { st.sensorPackage = ""; prefs.sensorPackage = "" }) { Text("Cualquier app") }
+                        }
+                    }
                     if (!sensorReady) {
                         Text(
                             "Mientras falte el texto de la notificación o «Acceso a notificaciones» (Revisar permisos), " +
@@ -325,10 +329,10 @@ fun HomeScreen(resumeTick: Int, onCalibrate: () -> Unit, onTest: () -> Unit, onP
                     )
                 }
                 if (st.softStart) {
-                    SoundChoice("Sonido suave", st.soundSoft, st.volumeSoft, 0.05f..0.6f,
+                    SoundChoice("Sonido suave", RingtoneManager.TYPE_RINGTONE, st.soundSoft, st.volumeSoft, 0.05f..0.6f,
                         onSound = { st.soundSoft = it; save() }, onVolume = { st.volumeSoft = it }, onVolumeDone = { save() })
                 }
-                SoundChoice("Sonido de la alarma", st.soundLoud, st.volumeLoud, 0.3f..1f,
+                SoundChoice("Sonido de la alarma", RingtoneManager.TYPE_ALARM, st.soundLoud, st.volumeLoud, 0.3f..1f,
                     onSound = { st.soundLoud = it; save() }, onVolume = { st.volumeLoud = it }, onVolumeDone = { save() })
             }
 
@@ -414,10 +418,11 @@ fun HomeScreen(resumeTick: Int, onCalibrate: () -> Unit, onTest: () -> Unit, onP
     }
 }
 
-/** Sonido de una fase (selector de tonos del sistema) y su volumen, como fracción del máximo de alarma. */
+/** Sonido de una fase (selector de tonos del sistema, de [type]) y su volumen, como fracción del máximo de alarma. */
 @Composable
 private fun SoundChoice(
     label: String,
+    type: Int,
     uri: String,
     volume: Float,
     range: ClosedFloatingPointRange<Float>,
@@ -428,7 +433,8 @@ private fun SoundChoice(
     val context = LocalContext.current
     val current = if (uri.isEmpty()) Settings.System.DEFAULT_ALARM_ALERT_URI else Uri.parse(uri)
     val title = remember(uri) {
-        if (uri.isEmpty()) null else try { RingtoneManager.getRingtone(context, current)?.getTitle(context) } catch (e: Exception) { null }
+        // stop(): getRingtone prepara un reproductor que si no queda abierto
+        if (uri.isEmpty()) null else try { RingtoneManager.getRingtone(context, current)?.let { r -> r.getTitle(context).also { r.stop() } } } catch (e: Exception) { null }
     } ?: "Alarma predeterminada"
     val picker = rememberLauncherForActivityResult(ActivityResultContracts.StartActivityForResult()) { r ->
         @Suppress("DEPRECATION")
@@ -437,15 +443,14 @@ private fun SoundChoice(
     }
     Row(verticalAlignment = Alignment.CenterVertically) {
         Text("$label: $title", modifier = Modifier.weight(1f))
-        OutlinedButton(onClick = {
+        OutlinedButton(modifier = Modifier.semantics { contentDescription = "Elegir $label" }, onClick = {
             try {
                 picker.launch(
                     Intent(RingtoneManager.ACTION_RINGTONE_PICKER)
-                        .putExtra(RingtoneManager.EXTRA_RINGTONE_TYPE, RingtoneManager.TYPE_ALL)
+                        .putExtra(RingtoneManager.EXTRA_RINGTONE_TYPE, type) // TYPE_ALL rompe «Agregar sonido» del selector
                         .putExtra(RingtoneManager.EXTRA_RINGTONE_TITLE, label)
                         .putExtra(RingtoneManager.EXTRA_RINGTONE_SHOW_SILENT, false)
-                        .putExtra(RingtoneManager.EXTRA_RINGTONE_SHOW_DEFAULT, true)
-                        .putExtra(RingtoneManager.EXTRA_RINGTONE_DEFAULT_URI, Settings.System.DEFAULT_ALARM_ALERT_URI)
+                        .putExtra(RingtoneManager.EXTRA_RINGTONE_SHOW_DEFAULT, type == RingtoneManager.TYPE_ALARM)
                         .putExtra(RingtoneManager.EXTRA_RINGTONE_EXISTING_URI, current)
                 )
             } catch (e: Exception) {

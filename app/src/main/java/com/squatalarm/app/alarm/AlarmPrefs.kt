@@ -4,6 +4,7 @@ import android.content.Context
 import android.content.SharedPreferences
 import android.os.UserManager
 import com.squatalarm.app.squat.Calibration
+import java.io.File
 
 /** Configuración persistente (SharedPreferences en almacenamiento protegido por dispositivo, ver [open]). */
 class AlarmPrefs(context: Context) {
@@ -174,7 +175,9 @@ class AlarmPrefs(context: Context) {
             shared?.let { return it }
             val dp = app.createDeviceProtectedStorageContext()
             val unlocked = app.getSystemService(UserManager::class.java).isUserUnlocked
-            if (unlocked) dp.moveSharedPreferencesFrom(app, FILE) // trae los parámetros de versiones anteriores (no hace nada si ya se movieron)
+            // Trae los parámetros de versiones anteriores, solo si aún no hay: tras volver a instalar una versión vieja
+            // y luego esta, el archivo casi vacío de la vieja borraría los ajustes buenos.
+            if (unlocked && !File(dp.dataDir, "shared_prefs/$FILE.xml").exists()) dp.moveSharedPreferencesFrom(app, FILE)
             return dp.getSharedPreferences(FILE, Context.MODE_PRIVATE).also { if (unlocked) shared = it }
         }
     }

@@ -41,10 +41,9 @@ SwitchBot «sensor espacios: Movimiento detectado» si el sensor está en la coc
 
 1. **Revisar permisos** → concede **Acceso a notificaciones**. Si sale «Ajuste restringido», usa el mismo
    procedimiento de abajo.
-2. **Escribe el texto de la notificación** (p. ej. «Movimiento detectado») y, si quieres, la app del sensor
-   (p. ej. `com.theswitchbot.switchbot`; vacía = cualquier app con ese texto). **O elígela de las notificaciones**:
-   aparecen las visibles; si la del sensor no está, pasa frente a él y la nueva aparecerá en la lista; se llenan
-   la app y el texto, que se pueden editar. Por ejemplo, «Movimiento detectado» acepta cualquier sensor de esa app,
+2. **Escribe el texto de la notificación** (p. ej. «Movimiento detectado»): sirve la de cualquier app con ese texto
+   (al menos 6 letras). **O elígela de las notificaciones** para aceptar solo las de esa app: aparecen las visibles;
+   si la del sensor no está, pasa frente a él y la nueva aparecerá en la lista. El texto se puede editar después. Por ejemplo, «Movimiento detectado» acepta cualquier sensor de esa app,
    mientras que «sensor espacios» acepta solo ese.
 3. **Probar alarma en 10 s** y camina hasta el sensor.
 
@@ -64,7 +63,9 @@ Al instalar una versión nueva **encima** de la anterior (misma firma), los par�
 al desinstalar. **Respaldo de parámetros → Exportar** guarda un archivo de texto (`squatalarm-parametros.txt`) en la
 carpeta que elijas (Descargas, Drive…), con la preconfiguración, la alarma, la misión y el sensor. **Importar** lo
 restaura. Al importar, cada valor se valida con su tipo y su rango (los de la interfaz); si el archivo no es válido,
-no se cambia nada.
+no se cambia nada. Desde la versión con inicio suave, los parámetros se guardan donde Android los deja leer antes del
+primer desbloqueo; una versión anterior instalada encima arranca con parámetros vacíos (exporta antes de volver a una
+vieja; al reinstalar la nueva, los parámetros reaparecen).
 
 ## Preconfiguración bayesiana
 

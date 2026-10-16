@@ -14,6 +14,7 @@ import android.provider.Settings
 import androidx.core.app.NotificationManagerCompat
 import androidx.core.content.ContextCompat
 import com.squatalarm.app.alarm.AlarmPrefs
+import com.squatalarm.app.alarm.SensorMatch
 import com.squatalarm.app.block.PowerMenuBlockerService
 
 /** Un permiso o ajuste que la alarma necesita y la pantalla de Ajustes donde se concede. */
@@ -100,7 +101,7 @@ object PermissionUtils {
      */
     fun sensorMissionReady(context: Context): Boolean {
         val p = AlarmPrefs(context)
-        return p.mission == AlarmPrefs.MISSION_SENSOR && p.sensorText.isNotBlank() && listenerEnabled(context) &&
+        return p.mission == AlarmPrefs.MISSION_SENSOR && SensorMatch.configured(p.sensorPackage, p.sensorText) && listenerEnabled(context) &&
             context.getSystemService(UserManager::class.java).isUserUnlocked
     }
 
