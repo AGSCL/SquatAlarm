@@ -168,6 +168,7 @@ fun HomeScreen(resumeTick: Int, onCalibrate: () -> Unit, onTest: () -> Unit, onP
                 try {
                     val text = context.contentResolver.openInputStream(uri)?.use { it.readBytes().decodeToString() }.orEmpty()
                     prefs.importText(text)
+                    MorningLog.forgetPosterior(context) // la evidencia guardada era de la calibración anterior
                     AlarmScheduler.schedule(context)
                     reloadKey++
                     "Parámetros importados"

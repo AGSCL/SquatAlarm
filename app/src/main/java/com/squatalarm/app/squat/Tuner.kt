@@ -188,13 +188,18 @@ class BayesTuner {
     private val fp = FloatArray(N)
     private val tn = FloatArray(N)
 
-    /** Incorpora un tramo con su verdad declarada y actualiza todos los posteriores ([evidence] = peso del tramo). */
-    fun add(seg: Segment, weight: Double, evidence: Float = 1f) {
+    /**
+     * Incorpora un tramo con su verdad declarada y actualiza todos los posteriores ([evidence] = peso del tramo).
+     * [negCap]: tope de ventanas negativas que aporta el tramo (los minutos acostado de una alarma no deben pesar
+     * más que una falsación); si las supera, sus falsos positivos y negativos verdaderos se escalan juntos.
+     */
+    fun add(seg: Segment, weight: Double, evidence: Float = 1f, negCap: Int = Int.MAX_VALUE) {
         if (windowMs == 0L && seg.positive && seg.truth > 0) {
             windowMs = (seg.durationMs / seg.truth).coerceIn(1000L, 5000L)
         }
         seg.negWindows = Tuner.negativeWindows(seg, if (windowMs > 0L) windowMs else DEFAULT_WINDOW_MS)
         val truth = seg.truth
+        val negEv = evidence * if (seg.negWindows > negCap) negCap.toFloat() / seg.negWindows else 1f
         var negAbs = FloatArray(64)
         var pos = FloatArray(64)
         var tilt = FloatArray(64)
@@ -219,8 +224,8 @@ class BayesTuner {
                 val fpSeg = maxOf(d - truth, 0)
                 tp[i] += evidence * minOf(d, truth)
                 fn[i] += evidence * maxOf(truth - d, 0)
-                fp[i] += evidence * fpSeg
-                tn[i] += evidence * maxOf(seg.negWindows - fpSeg, 0)
+                fp[i] += negEv * fpSeg
+                tn[i] += negEv * maxOf(seg.negWindows - fpSeg, 0)
             }
         }
         segments.add(seg)
@@ -367,9 +372,28 @@ object Tuner {
         return mean > 0 && mean >= z * sd
     }
 
-    /** Suma una alarma (peso [evidence]) y devuelve la θ nueva solo si es claramente mejor que [cur]. */
+    /** Duración de una falsación de la preconfiguración: tope de lo negativo que aporta una alarma. */
+    const val FALSIFICATION_MS = 20_000L
+    /** La alarma aprende de sus últimos minutos (las sentadillas, no el rato acostado) y desde la primera sentadilla. */
+    const val ALARM_WINDOW_MS = 180_000L
+    /** Margen antes de la primera sentadilla contada: cubre las que el detector no vio al empezar. */
+    const val BEFORE_FIRST_MS = 30_000L
+    /** Tope de lo que se graba (memoria); si las sentadillas empezaron antes, esa alarma no enseña. */
+    const val MAX_KEEP_MS = 600_000L
+
+    /** Desde cuándo guardar muestras (tiempo del sensor), dado el último instante y la primera sentadilla (0 = aún no). */
+    fun alarmKeepFrom(lastMs: Long, firstSquatMs: Long): Long {
+        val from = lastMs - ALARM_WINDOW_MS
+        return if (firstSquatMs > 0L) maxOf(lastMs - MAX_KEEP_MS, minOf(from, firstSquatMs - BEFORE_FIRST_MS)) else from
+    }
+
+    /**
+     * Suma una alarma (peso [evidence]; sus ventanas negativas, como mucho las de una falsación) y devuelve
+     * la θ nueva solo si es claramente mejor que [cur].
+     */
     fun learnFromAlarm(tuner: BayesTuner, seg: Segment, weight: Double, cur: Int, evidence: Float = ALARM_EVIDENCE): Int? {
-        tuner.add(seg, weight, evidence)
+        val window = if (tuner.windowMs > 0L) tuner.windowMs else BayesTuner.DEFAULT_WINDOW_MS
+        tuner.add(seg, weight, evidence, negCap = maxOf(1, (FALSIFICATION_MS / window).toInt()))
         val best = tuner.bestIndex(weight)
         return best.takeIf { it != cur && clearlyBetter(tuner.posterior(it), tuner.posterior(cur), weight) }
     }

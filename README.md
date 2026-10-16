@@ -41,13 +41,16 @@ ayer tomaste alcohol o fumaste, a qué hora te acostaste (propone la de la vez a
 con estrés. Tocar una opción elegida la desmarca; lo no respondido queda en blanco; «Omitir» (o Atrás) guarda solo lo
 automático (hora y minutos hasta apagarla). Si la apagó el sensor, no pregunta sentadillas.
 
-- **Aprendizaje:** las sentadillas declaradas y los últimos 3 min de sensores se suman a los posteriores de la
-  preconfiguración con **peso 0,2** (una alarma vale la quinta parte de un paso de preconfiguración, que así «enfría»
-  los cambios). La detección cambia sola solo si otra combinación es **claramente mejor**: probabilidad posterior
+- **Aprendizaje:** las sentadillas declaradas y los sensores desde 30 s antes de la primera sentadilla contada (o
+  los últimos 3 min) se suman a los posteriores de la preconfiguración con **peso 0,2**: una alarma vale la quinta
+  parte de un paso de preconfiguración, y el rato quieto aporta como mucho las ventanas negativas de una falsación
+  de 20 s. Así la preconfiguración «enfría» los cambios. Si la detección cambia, la exigencia vuelve a ×1 (los
+  parámetros nuevos ya reflejan cómo detectas). La detección cambia sola solo si otra combinación es **claramente mejor**: probabilidad posterior
   ≈ 97,5 % de mayor utilidad (aproximación normal, conservadora). En las pruebas automáticas, ni una alarma en que los
   parámetros no vieron ninguna sentadilla los cambia; recién la tercera seguida. Si cambian, la validación anterior
   queda como «sin validar». Las preconfiguraciones hechas antes de esta versión no guardaban la evidencia: hay que
-  preconfigurar una vez más para que aprenda.
+  preconfigurar una vez más para que aprenda. Importar parámetros descarta esa evidencia (no corresponde a la
+  calibración importada).
 - **Resumen en la app** (tarjeta «Registro de mañanas»): por alcohol, tabaco, estrés y 7 h o más en cama, cuántas
   mañanas, ánimo medio (−1 a +1) y minutos hasta apagarla. **Exportar registro (CSV)**: una fila por mañana
   (`fecha, hora, inicio_ms, minutos_hasta_apagar, mision, contadas, reales, animo, alcohol, tabaco, acostarse,

@@ -11,8 +11,6 @@ import java.io.File
  * como los parámetros: una alarma apagada antes del primer desbloqueo también se registra.
  */
 object MorningLog {
-    /** La alarma aprende solo de sus últimos minutos: las sentadillas, no el rato acostado. */
-    const val ALARM_WINDOW_MS = 180_000L
 
     private fun dir(context: Context) = context.createDeviceProtectedStorageContext().filesDir
     fun logFile(context: Context) = File(dir(context), "registro.csv")
@@ -33,8 +31,18 @@ object MorningLog {
     fun savePosterior(context: Context, tuner: BayesTuner) {
         val f = posteriorFile(context)
         val tmp = File(f.path + ".tmp")
-        tmp.outputStream().buffered().use { tuner.write(it) }
+        java.io.FileOutputStream(tmp).use { fos ->
+            val out = fos.buffered()
+            tuner.write(out)
+            out.flush()
+            fos.fd.sync() // a disco antes de renombrar: un corte de energía no deja un archivo vacío
+        }
         if (!tmp.renameTo(f)) tmp.delete()
+    }
+
+    /** La evidencia ya no corresponde a la calibración (se importaron parámetros o falló guardarla): se descarta. */
+    fun forgetPosterior(context: Context) {
+        posteriorFile(context).delete()
     }
 
     private fun loadPosterior(context: Context): BayesTuner? =
@@ -44,13 +52,15 @@ object MorningLog {
      * Suma la alarma a los posteriores de la preconfiguración (peso [Tuner.ALARM_EVIDENCE]) y cambia la detección
      * solo si otra θ es claramente mejor. Devuelve qué pasó, para mostrarlo y guardarlo en el registro.
      */
-    fun learn(context: Context, seg: Segment, real: Int, counted: Int): String {
+    fun learn(context: Context, seg: Segment, real: Int, counted: Int, firstSquatMs: Long): String {
         val prefs = AlarmPrefs(context)
         val cal = prefs.calibration
         val cur = BayesTuner.indexOf(cal)
         val tuner = if (cal.calibrated && cur >= 0) loadPosterior(context) else null
         if (tuner == null) return "sin aprender: falta preconfigurar con esta versión"
-        seg.dropBefore(seg.startMs + seg.durationMs - ALARM_WINDOW_MS)
+        val from = Tuner.alarmKeepFrom(seg.startMs + seg.durationMs, firstSquatMs)
+        if (firstSquatMs > 0L && from > firstSquatMs - Tuner.BEFORE_FIRST_MS) return "sin aprender: las sentadillas duraron más de lo grabado"
+        seg.dropBefore(from)
         if (seg.durationMs < 10_000L) return "sin aprender: no hay datos de sensores"
         seg.truth = real
         seg.liveCount = counted
@@ -60,11 +70,13 @@ object MorningLog {
         prefs.learnedAlarms = prefs.learnedAlarms + 1
         val i = new ?: cur
         val post = tuner.posterior(i)
+        // La θ nueva ya refleja cómo detectas: la exigencia vuelve a ×1 (si no, se aplicaría dos veces).
+        if (new != null) prefs.strictness = 1f
         // Si cambia θ, la validación anterior ya no corresponde: queda «sin validar».
         prefs.calibration = BayesTuner.calibration(i).copy(
             calibrated = true, nSquats = cal.nSquats, sens = post.sens.toFloat(), spec = post.spec.toFloat(),
             valSens = if (new == null) cal.valSens else -1f, valSpec = if (new == null) cal.valSpec else -1f,
         )
-        return if (new == null) "aprendió; detección sin cambios" else "cambió la detección (claramente mejor)"
+        return if (new == null) "aprendió; detección sin cambios" else "cambió la detección (claramente mejor); exigencia ×1"
     }
 }

@@ -253,7 +253,8 @@ fun PreconfigScreen(onDone: () -> Unit) {
                     st.tuner.add(seg, w)
                     if (last) {
                         // Evidencia base para aprender de las alarmas (cada una pesa 0,2 de un paso de aquí).
-                        try { MorningLog.savePosterior(context, st.tuner) } catch (e: Exception) { } // sin esto solo no aprende de alarmas
+                        // Si no se puede guardar, se descarta la anterior: no debe emparejarse con esta calibración.
+                        try { MorningLog.savePosterior(context, st.tuner) } catch (e: Exception) { MorningLog.forgetPosterior(context) }
                         prefs.learnedAlarms = 0
                         val (cal, post) = st.tuner.best(w)
                         Triple(cal, post, Tuner.evaluate(st.tuner.segments, Calibration.DEFAULT, st.tuner.windowMs).posterior())

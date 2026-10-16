@@ -269,6 +269,20 @@ require(!Tuner.clearlyBetter(tuner.posterior(i0), tuner.posterior(i0), 0.5)) { "
 require(Tuner.clearlyBetter(Posterior(101.0, 1.0, 101.0, 1.0), Posterior(51.0, 51.0, 51.0, 51.0), 0.5)) { "mucho mejor → sí" }
 require(!Tuner.clearlyBetter(Posterior(4.0, 1.0, 4.0, 1.0), Posterior(3.0, 2.0, 3.0, 2.0), 0.5)) { "con poca evidencia → no" }
 run {
+    // Una alarma con mucho rato quieto aporta como mucho las ventanas negativas de una falsación (× 0,2).
+    val lazy = segment("Alarma lenta", true, 10, noise(150, 0.1f) + squats(10).map { Smp(it.a, it.t + 150_000L, it.tiltDeg) })
+    val t2 = loadTuner()
+    Tuner.learnFromAlarm(t2, lazy, 0.5, i0)
+    val cap = Tuner.FALSIFICATION_MS / tuner.windowMs
+    val dNeg = (t2.posterior(i0).aE + t2.posterior(i0).bE) - (tuner.posterior(i0).aE + tuner.posterior(i0).bE)
+    require(lazy.negWindows > cap && dNeg <= Tuner.ALARM_EVIDENCE * cap + 1e-4) { "tope negativo: $dNeg con ${lazy.negWindows} ventanas" }
+}
+// Qué tramo de la alarma se graba: los últimos 3 min, o desde 30 s antes de la primera sentadilla (máx. 10 min)
+require(Tuner.alarmKeepFrom(1_000_000L, 0L) == 820_000L) { "sin sentadillas: últimos 3 min" }
+require(Tuner.alarmKeepFrom(1_000_000L, 700_000L) == 670_000L) { "desde la primera sentadilla" }
+require(Tuner.alarmKeepFrom(1_000_000L, 950_000L) == 820_000L) { "sentadillas recientes: últimos 3 min" }
+require(Tuner.alarmKeepFrom(1_000_000L, 100_000L) == 400_000L) { "tope de 10 min" }
+run {
     // Enfriamiento: la preconfiguración pesa más; una alarma distinta no mueve θ, varias consistentes sí.
     val learner = loadTuner()
     var switchedAt = -1

@@ -18,6 +18,7 @@ import androidx.compose.runtime.mutableStateOf
 import com.squatalarm.app.squat.Segment
 import com.squatalarm.app.squat.SquatCounter
 import com.squatalarm.app.squat.SquatDetector
+import com.squatalarm.app.squat.Tuner
 import com.squatalarm.app.ui.AlarmScreen
 import com.squatalarm.app.ui.Answers
 import com.squatalarm.app.ui.CheckInScreen
@@ -49,6 +50,9 @@ class AlarmActivity : ComponentActivity(), SquatDetector.Listener {
     private var ringStart = 0L
     /** Sensores de los últimos minutos, para aprender de esta alarma. */
     private val recording = Segment("Alarma", true)
+    private var lastSampleMs = 0L
+    /** Inicio (tiempo del sensor) de la primera sentadilla contada: el aprendizaje cubre desde ahí. */
+    private var firstSquatMs = 0L
 
     /** Registro de la mañana tras apagarla ([askSquats]: la apagaron las sentadillas). */
     private class Ended(val askSquats: Boolean, val counted: Int, val at: Long)
@@ -75,7 +79,10 @@ class AlarmActivity : ComponentActivity(), SquatDetector.Listener {
         val det = SquatDetector.fromPrefs(this, prefs, this)
         det.recorder = { a, t, x, y, z ->
             recording.add(a, t, x, y, z)
-            if (t - recording.startMs > 2 * MorningLog.ALARM_WINDOW_MS) recording.dropBefore(t - MorningLog.ALARM_WINDOW_MS)
+            lastSampleMs = t
+            // Recorta de vez en cuando (no en cada muestra): conserva desde la primera sentadilla o los últimos 3 min.
+            val from = Tuner.alarmKeepFrom(t, firstSquatMs)
+            if (from - recording.startMs > Tuner.ALARM_WINDOW_MS) recording.dropBefore(from)
         }
         detector = det
         // Atrás bloqueado mientras suena; en el registro equivale a «Omitir».
@@ -143,6 +150,7 @@ class AlarmActivity : ComponentActivity(), SquatDetector.Listener {
 
     override fun onSquat(count: Int, squat: SquatCounter.Squat) {
         done.intValue = count
+        if (count == 1) firstSquatMs = lastSampleMs - squat.cycleMs
         rejection.value = ""
         if (count >= required && !finished) dismiss(bySquats = true)
     }
@@ -183,7 +191,7 @@ class AlarmActivity : ComponentActivity(), SquatDetector.Listener {
         // Aprender re-analiza ~3 min de sensores con todas las θ (unos segundos): fuera del hilo principal.
         Thread {
             val msg = try {
-                val learned = if (e.askSquats && answers.real != null) MorningLog.learn(this, recording, answers.real, e.counted) else ""
+                val learned = if (e.askSquats && answers.real != null) MorningLog.learn(this, recording, answers.real, e.counted, firstSquatMs) else ""
                 writeRow(e, answers, learned)
                 answers.bedMin?.let { prefs.lastBedtimeMin = it }
                 buildString {
