@@ -59,6 +59,7 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import com.squatalarm.app.alarm.AlarmPrefs
 import com.squatalarm.app.alarm.AlarmScheduler
+import com.squatalarm.app.alarm.AlarmVibration
 import com.squatalarm.app.alarm.MorningLog
 import com.squatalarm.app.alarm.MorningSummary
 import com.squatalarm.app.alarm.RingPlan
@@ -347,6 +348,15 @@ fun HomeScreen(resumeTick: Int, onCalibrate: () -> Unit, onTest: () -> Unit, onP
                 }
                 SoundChoice("Sonido de la alarma", RingtoneManager.TYPE_ALARM, st.soundLoud, st.volumeLoud, 0.3f..1f,
                     onSound = { st.soundLoud = it; save() }, onVolume = { st.volumeLoud = it }, onVolumeDone = { save() })
+                OutlinedButton(
+                    // 3 s del patrón de la alarma: si aquí no vibra, es un ajuste del teléfono, no la app.
+                    onClick = { AlarmVibration.vibrate(context, AlarmVibration.LOUD + AlarmVibration.LOUD.drop(1) + AlarmVibration.LOUD.drop(1), -1) },
+                    modifier = Modifier.fillMaxWidth(),
+                ) { Text("Probar vibración") }
+                Text(
+                    "Si no vibra, revisa en Ajustes → Sonido y vibración la vibración de alarmas (y que no esté desactivada toda la vibración).",
+                    style = MaterialTheme.typography.bodySmall,
+                )
             }
 
             SectionCard("Detección de sentadillas") {

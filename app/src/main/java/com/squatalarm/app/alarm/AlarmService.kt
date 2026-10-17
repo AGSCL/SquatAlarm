@@ -19,10 +19,6 @@ import android.os.IBinder
 import android.os.Looper
 import android.os.PowerManager
 import android.os.SystemClock
-import android.os.VibrationAttributes
-import android.os.VibrationEffect
-import android.os.Vibrator
-import android.os.VibratorManager
 import android.provider.Settings
 import androidx.core.app.NotificationCompat
 import androidx.core.content.ContextCompat
@@ -47,6 +43,8 @@ class AlarmService : Service() {
     private var ringing = false
     private var phase: RingPlan.Phase? = null
     private var soundUri = ""
+    /** Patrón de vibración de la fase actual (null = sin vibrar); el vigilante lo relanza cada 4 s. */
+    private var vibration: LongArray? = null
     // Ajustes de sonido leídos al empezar a sonar: cambiarlos a media alarma no la altera (ni su cuenta regresiva).
     private var softStart = true
     private var soundSoft = ""
@@ -69,6 +67,8 @@ class AlarmService : Service() {
             applyPhase()
             ensureVolume()
             ensurePlaying()
+            // Android corta una vibración larga (botón de encendido, otra vibración, toques): se relanza siempre.
+            vibration?.let { AlarmVibration.vibrate(this@AlarmService, it, 0) }
             if (!activityVisible && !phoneInUse(this@AlarmService)) {
                 wakeScreen()
                 bringToFront(this@AlarmService, repostNotification = true)
@@ -162,9 +162,9 @@ class AlarmService : Service() {
         stopSound()
         ensureVolume() // antes del sonido: el suave no arranca ni un instante al volumen anterior
         when (p) {
-            RingPlan.Phase.SOFT -> { soundUri = soundSoft; startPlayer(); startVibration(SOFT_VIBRATION) }
+            RingPlan.Phase.SOFT -> { soundUri = soundSoft; startPlayer(); startVibration(AlarmVibration.SOFT) }
             RingPlan.Phase.SILENT -> {}
-            RingPlan.Phase.LOUD -> { soundUri = soundLoud; startPlayer(); startVibration(LOUD_VIBRATION) }
+            RingPlan.Phase.LOUD -> { soundUri = soundLoud; startPlayer(); startVibration(AlarmVibration.LOUD) }
         }
         // El cambio de fase llega a su hora exacta, no en el siguiente chequeo del vigilante (hasta 4 s después).
         val next = when (p) {
@@ -179,7 +179,8 @@ class AlarmService : Service() {
         try { player?.stop() } catch (e: Exception) { }
         try { player?.release() } catch (e: Exception) { }
         player = null
-        try { vibrator()?.cancel() } catch (e: Exception) { }
+        vibration = null
+        AlarmVibration.cancel(this)
     }
 
     /** Volumen de la fase (elegido por el usuario); se reimpone cada 4 s: los botones de volumen no lo cambian. */
@@ -241,23 +242,9 @@ class AlarmService : Service() {
         }
     }
 
-    private fun vibrator(): Vibrator? = if (Build.VERSION.SDK_INT >= 31) {
-        (getSystemService(Context.VIBRATOR_MANAGER_SERVICE) as? VibratorManager)?.defaultVibrator
-    } else {
-        @Suppress("DEPRECATION")
-        getSystemService(Context.VIBRATOR_SERVICE) as? Vibrator
-    }
-
     private fun startVibration(pattern: LongArray) {
-        val v = vibrator() ?: return
-        try {
-            val effect = VibrationEffect.createWaveform(pattern, 0)
-            if (Build.VERSION.SDK_INT >= 33) {
-                v.vibrate(effect, VibrationAttributes.createForUsage(VibrationAttributes.USAGE_ALARM))
-            } else {
-                v.vibrate(effect)
-            }
-        } catch (e: Exception) { }
+        vibration = pattern
+        AlarmVibration.vibrate(this, pattern, 0)
     }
 
     private fun acquireWakeLock() {
@@ -287,8 +274,6 @@ class AlarmService : Service() {
         private const val NOTIF_ID_FS = 43
         private const val ACTION_STOP = "com.squatalarm.app.action.STOP_SERVICE"
         private const val WATCHDOG_MS = 4_000L
-        private val SOFT_VIBRATION = longArrayOf(0L, 400L, 1600L)
-        private val LOUD_VIBRATION = longArrayOf(0L, 700L, 500L)
         private const val WAKELOCK_TIMEOUT_MS = 3L * 60 * 60 * 1000
 
         @Volatile var isRunning = false

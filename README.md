@@ -31,7 +31,10 @@ Para no despertar a otros, con **Sonido → Inicio suave** (activado de fábrica
 vibración y sonido bajo, sigue con 2 min de silencio y recién a los 3½ min suena completa. La pantalla de alarma
 muestra cuánto falta, y las sentadillas (o el sensor) la apagan en cualquier fase. Se puede elegir el sonido y el
 volumen de cada fase (el volumen es una fracción del máximo de alarma y se reimpone mientras suena; la alarma completa
-no baja de 30 %). El apagado de seguridad cuenta desde el inicio suave.
+no baja de 30 %). El apagado de seguridad cuenta desde el inicio suave. La vibración se relanza cada 4 s (Android
+corta las vibraciones largas al apretar el botón de encendido o con otras vibraciones) y siempre se declara como de
+alarma. **Probar vibración** vibra 3 s con el patrón de la alarma: si ahí no vibra, es un ajuste del teléfono
+(vibración de alarmas o toda la vibración desactivada), no la app.
 
 ## Registro de mañanas y aprendizaje
 

@@ -1,12 +1,7 @@
 package com.squatalarm.app.ui
 
-import android.content.Context
 import android.media.AudioManager
 import android.media.ToneGenerator
-import android.os.Build
-import android.os.VibrationEffect
-import android.os.Vibrator
-import android.os.VibratorManager
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -48,6 +43,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import com.squatalarm.app.alarm.AlarmPrefs
+import com.squatalarm.app.alarm.AlarmVibration
 import com.squatalarm.app.alarm.MorningLog
 import com.squatalarm.app.squat.BayesTuner
 import com.squatalarm.app.squat.Calibration
@@ -181,7 +177,7 @@ fun PreconfigScreen(onDone: () -> Unit) {
     // Pitido + vibración: con el teléfono contra el pecho no se ve la pantalla.
     fun cue() {
         try { tone?.startTone(ToneGenerator.TONE_PROP_BEEP, 250) } catch (e: Exception) { }
-        try { vibrator(context)?.vibrate(VibrationEffect.createOneShot(200L, VibrationEffect.DEFAULT_AMPLITUDE)) } catch (e: Exception) { }
+        AlarmVibration.vibrate(context, longArrayOf(0L, 200L), -1)
     }
 
     fun startSteps(steps: List<RecStep>) {
@@ -357,12 +353,6 @@ fun PreconfigScreen(onDone: () -> Unit) {
     }
 }
 
-@Suppress("DEPRECATION")
-private fun vibrator(context: Context): Vibrator? = if (Build.VERSION.SDK_INT >= 31) {
-    (context.getSystemService(Context.VIBRATOR_MANAGER_SERVICE) as? VibratorManager)?.defaultVibrator
-} else {
-    context.getSystemService(Context.VIBRATOR_SERVICE) as? Vibrator
-}
 
 @Composable
 private fun ColumnScope.Intro(st: PreState, sensorAvailable: Boolean, onStart: () -> Unit) {
