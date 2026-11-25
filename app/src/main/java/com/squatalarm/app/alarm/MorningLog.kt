@@ -1,7 +1,7 @@
 package com.squatalarm.app.alarm
 
 import android.content.Context
-import com.squatalarm.app.squat.BayesTuner
+import com.squatalarm.app.squat.Evolver
 import com.squatalarm.app.squat.Segment
 import com.squatalarm.app.squat.Tuner
 import java.io.File
@@ -14,7 +14,7 @@ object MorningLog {
 
     private fun dir(context: Context) = context.createDeviceProtectedStorageContext().filesDir
     fun logFile(context: Context) = File(dir(context), "registro.csv")
-    private fun posteriorFile(context: Context) = File(dir(context), "posterior.bin")
+    private fun posteriorFile(context: Context) = File(dir(context), "aprendizaje.bin")
 
     fun rows(context: Context): List<CheckIn> =
         try { logFile(context).readLines().mapNotNull(CheckIn::parse) } catch (e: Exception) { emptyList() }
@@ -27,8 +27,12 @@ object MorningLog {
 
     fun hasPosterior(context: Context) = posteriorFile(context).exists()
 
-    /** Escribe a un temporal y lo renombra: si el proceso muere a mitad, queda el archivo anterior entero. */
-    fun savePosterior(context: Context, tuner: BayesTuner) {
+    /**
+     * Guarda la población y los tramos de la preconfiguración. Escribe a un temporal y lo renombra: si el proceso
+     * muere a mitad, queda el archivo anterior entero.
+     */
+    fun savePosterior(context: Context, tuner: Evolver) {
+        File(dir(context), "posterior.bin").delete() // la grilla de versiones anteriores (varios MB) ya no se usa
         val f = posteriorFile(context)
         val tmp = File(f.path + ".tmp")
         java.io.FileOutputStream(tmp).use { fos ->
@@ -45,19 +49,18 @@ object MorningLog {
         posteriorFile(context).delete()
     }
 
-    private fun loadPosterior(context: Context): BayesTuner? =
-        try { posteriorFile(context).inputStream().buffered().use { BayesTuner.read(it) } } catch (e: Exception) { null }
+    private fun loadPosterior(context: Context): Evolver? =
+        try { posteriorFile(context).inputStream().buffered().use { Evolver.read(it) } } catch (e: Exception) { null }
 
     /**
-     * Suma la alarma a los posteriores de la preconfiguración (peso [Tuner.ALARM_EVIDENCE]) y cambia la detección
-     * solo si otra θ es claramente mejor. Devuelve qué pasó, para mostrarlo y guardarlo en el registro.
+     * Suma la alarma a los posteriores de la población (peso [Tuner.ALARM_EVIDENCE]), cría una generación y cambia
+     * la detección solo si otro individuo es claramente mejor. Devuelve qué pasó, para mostrarlo y guardarlo en el registro.
      */
     fun learn(context: Context, seg: Segment, real: Int, counted: Int, firstSquatMs: Long): String {
         val prefs = AlarmPrefs(context)
         val cal = prefs.calibration
-        val cur = BayesTuner.indexOf(cal)
-        val tuner = if (cal.calibrated && cur >= 0) loadPosterior(context) else null
-        if (tuner == null) return "sin aprender: falta preconfigurar con esta versión"
+        val tuner = if (cal.calibrated) loadPosterior(context) else null
+        if (tuner == null || !Evolver.sameGenes(tuner.pop[0].cal, cal)) return "sin aprender: falta preconfigurar con esta versión"
         val from = Tuner.alarmKeepFrom(seg.startMs + seg.durationMs, firstSquatMs)
         if (firstSquatMs > 0L && from > firstSquatMs - Tuner.BEFORE_FIRST_MS) return "sin aprender: las sentadillas duraron más de lo grabado"
         seg.dropBefore(from)
@@ -65,15 +68,15 @@ object MorningLog {
         seg.truth = real
         seg.liveCount = counted
         val w = prefs.calWeight.toDouble()
-        val new = Tuner.learnFromAlarm(tuner, seg, w, cur)
+        val new = tuner.learnFromAlarm(seg, w)
         savePosterior(context, tuner)
         prefs.learnedAlarms = prefs.learnedAlarms + 1
-        val i = new ?: cur
+        val i = tuner.pop[0]
         val post = tuner.posterior(i)
         // La θ nueva ya refleja cómo detectas: la exigencia vuelve a ×1 (si no, se aplicaría dos veces).
         if (new != null) prefs.strictness = 1f
         // Si cambia θ, la validación anterior ya no corresponde: queda «sin validar».
-        prefs.calibration = BayesTuner.calibration(i).copy(
+        prefs.calibration = i.cal.copy(
             calibrated = true, nSquats = cal.nSquats, sens = post.sens.toFloat(), spec = post.spec.toFloat(),
             valSens = if (new == null) cal.valSens else -1f, valSpec = if (new == null) cal.valSpec else -1f,
         )

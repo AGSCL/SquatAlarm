@@ -392,7 +392,7 @@ fun HomeScreen(resumeTick: Int, onCalibrate: () -> Unit, onTest: () -> Unit, onP
                     when {
                         !st.calibration.calibrated -> "Preconfigura para que la detección aprenda de tus alarmas."
                         !hasPosterior -> "Para que la detección aprenda de tus alarmas, preconfigura una vez más: " +
-                            "las preconfiguraciones anteriores no guardaban la evidencia."
+                            "esta versión aprende de otra forma y necesita grabar la evidencia de nuevo."
                         else -> "Aprendió de ${prefs.learnedAlarms} alarmas. Cada una pesa 0,2 de un paso de la preconfiguración " +
                             "y la detección solo cambia si la mejora es muy clara (≈97,5 % de probabilidad)."
                     },

@@ -188,7 +188,7 @@ class AlarmActivity : ComponentActivity(), SquatDetector.Listener {
         if (logged) return
         logged = true
         saving.value = true
-        // Aprender re-analiza ~3 min de sensores con todas las θ (unos segundos): fuera del hilo principal.
+        // Aprender re-analiza ~3 min de sensores con toda la población: fuera del hilo principal.
         Thread {
             val msg = try {
                 val learned = if (e.askSquats && answers.real != null) MorningLog.learn(this, recording, answers.real, e.counted, firstSquatMs) else ""

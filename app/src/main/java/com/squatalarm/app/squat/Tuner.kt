@@ -67,6 +67,22 @@ class Segment(val name: String, val positive: Boolean) {
     }
 
     fun processAt(counter: SquatCounter, i: Int): SquatCounter.Squat? = counter.process(fa[i], ft[i], fx[i], fy[i], fz[i])
+
+    fun write(d: java.io.DataOutputStream) {
+        d.writeUTF(name); d.writeBoolean(positive); d.writeInt(truth); d.writeInt(negWindows)
+        val n = prepareArrays()
+        d.writeInt(n)
+        for (i in 0 until n) { d.writeFloat(fa[i]); d.writeLong(ft[i]); d.writeFloat(fx[i]); d.writeFloat(fy[i]); d.writeFloat(fz[i]) }
+    }
+
+    companion object {
+        fun read(d: java.io.DataInputStream): Segment {
+            val s = Segment(d.readUTF(), d.readBoolean())
+            s.truth = d.readInt(); s.negWindows = d.readInt()
+            repeat(d.readInt()) { s.add(d.readFloat(), d.readLong(), d.readFloat(), d.readFloat(), d.readFloat()) }
+            return s
+        }
+    }
 }
 
 /** Matriz de confusión por ventanas (ver [Tuner.negativeWindows]). */
@@ -171,6 +187,7 @@ object BetaDist {
  * preconfiguración se re-analiza solo ese tramo con todas las θ (conjugación: los conteos se suman)
  * y el detector pasa a la θ que maximiza la utilidad esperada a posteriori
  * w·E[sens] + (1−w)·E[esp]. Empates: veto menos restrictivo y centro de la meseta de umbrales.
+ * Al terminar la preconfiguración, [Evolver] afina esa θ en continuo y sigue aprendiendo de las alarmas.
  */
 class BayesTuner {
     /** Largo de la ventana: duración / sentadillas reales de la primera serie (0 = aún no hay serie). */
@@ -240,21 +257,6 @@ class BayesTuner {
 
     fun posterior(i: Int) = Posterior(1.0 + tp[i], 1.0 + fn[i], 1.0 + tn[i], 1.0 + fp[i])
 
-    /** Guarda los posteriores (conteos por θ y ventana) para seguir aprendiendo de las alarmas. */
-    fun write(out: java.io.OutputStream) {
-        val d = java.io.DataOutputStream(out)
-        d.writeInt(FORMAT)
-        d.writeInt(N)
-        d.writeLong(windowMs)
-        val buf = java.nio.ByteBuffer.allocate(4 * N)
-        for (arr in arrayOf(tp, fn, fp, tn)) {
-            buf.clear()
-            buf.asFloatBuffer().put(arr)
-            d.write(buf.array())
-        }
-        d.flush()
-    }
-
     /** Mejor θ a posteriori para el peso [weight] de la sensibilidad (instantáneo: no re-analiza). */
     fun best(weight: Double): Pair<Calibration, Posterior> {
         val i = bestIndex(weight)
@@ -292,34 +294,6 @@ class BayesTuner {
         /** Horizontalidad máxima: 60° veta el teléfono acostado plano; 40°, también semirrecostado en la almohada. */
         val FLAT_MAXS = floatArrayOf(SquatCounter.NO_FLAT_LIMIT, 60f, 40f)
         const val DEFAULT_WINDOW_MS = 2500L
-        private const val FORMAT = 2
-
-        /** Lee lo guardado con [write]; null si es de otra versión de la grilla de parámetros. */
-        fun read(input: java.io.InputStream): BayesTuner? {
-            val d = java.io.DataInputStream(input)
-            if (d.readInt() != FORMAT || d.readInt() != N) return null
-            val t = BayesTuner()
-            t.windowMs = d.readLong()
-            val bytes = ByteArray(4 * N)
-            for (arr in arrayOf(t.tp, t.fn, t.fp, t.tn)) {
-                d.readFully(bytes)
-                java.nio.ByteBuffer.wrap(bytes).asFloatBuffer().get(arr)
-            }
-            return t
-        }
-
-        /** Posición de [c] en la grilla de θ, o -1 si no está (p. ej. los valores por defecto). */
-        fun indexOf(c: Calibration): Int {
-            val iD = THRESHOLDS.indexOf(c.thresholdDown)
-            val iU = THRESHOLDS.indexOf(c.thresholdUp)
-            val iC = MIN_CYCLES.indexOf(c.minCycleMs)
-            val iP = PEAKS.indexOfFirst { it == c.maxPeak }
-            val iMin = TILT_MINS.indexOfFirst { it == c.tiltMinDeg }
-            val iMax = TILT_MAXS.indexOfFirst { it == c.tiltMaxDeg }
-            val iF = FLAT_MAXS.indexOfFirst { it == c.flatMaxDeg }
-            if (listOf(iD, iU, iC, iP, iMin, iMax, iF).any { it < 0 } || c.maxCycleMs != MAX_CYCLE_MS) return -1
-            return ((iD * N_T + iU) * N_CYC + iC) * N_VETO + ((iP * N_TMIN + iMin) * N_TMAX + iMax) * N_FLAT + iF
-        }
 
         private val N_T = THRESHOLDS.size
         private val N_CYC = MIN_CYCLES.size
@@ -398,16 +372,6 @@ object Tuner {
         return if (firstSquatMs > 0L) maxOf(lastMs - MAX_KEEP_MS, minOf(from, firstSquatMs - BEFORE_FIRST_MS)) else from
     }
 
-    /**
-     * Suma una alarma (peso [evidence]; sus ventanas negativas, como mucho las de una falsación) y devuelve
-     * la θ nueva solo si es claramente mejor que [cur].
-     */
-    fun learnFromAlarm(tuner: BayesTuner, seg: Segment, weight: Double, cur: Int, evidence: Float = ALARM_EVIDENCE): Int? {
-        val window = if (tuner.windowMs > 0L) tuner.windowMs else BayesTuner.DEFAULT_WINDOW_MS
-        tuner.add(seg, weight, evidence, negCap = maxOf(1, (FALSIFICATION_MS / window).toInt()))
-        val best = tuner.bestIndex(weight)
-        return best.takeIf { it != cur && clearlyBetter(tuner.posterior(it), tuner.posterior(cur), weight) }
-    }
     const val VALIDATION_MIN_SENS = 0.8
     const val VALIDATION_MIN_SPEC = 0.9
 

@@ -45,14 +45,16 @@ con estrés. Tocar una opción elegida la desmarca; lo no respondido queda en bl
 automático (hora y minutos hasta apagarla). Si la apagó el sensor, no pregunta sentadillas.
 
 - **Aprendizaje:** las sentadillas declaradas y los sensores desde 30 s antes de la primera sentadilla contada (o
-  los últimos 3 min) se suman a los posteriores de la preconfiguración con **peso 0,2**: una alarma vale la quinta
+  los últimos 3 min) se suman a la evidencia de la preconfiguración con **peso 0,2**: una alarma vale la quinta
   parte de un paso de preconfiguración, y el rato quieto aporta como mucho las ventanas negativas de una falsación
-  de 20 s. Así la preconfiguración «enfría» los cambios. Si la detección cambia, la exigencia vuelve a ×1 (los
-  parámetros nuevos ya reflejan cómo detectas). La detección cambia sola solo si otra combinación es **claramente mejor**: probabilidad posterior
+  de 20 s. Así la preconfiguración «enfría» los cambios. Con cada alarma, la población del algoritmo genético
+  (ver «Afinado genético») cría una generación y todos se evalúan con la preconfiguración y las alarmas guardadas
+  (las más recientes, ~50 min de sensores; las más antiguas se olvidan). Si la detección cambia, la exigencia vuelve a ×1 (los
+  parámetros nuevos ya reflejan cómo detectas). La detección cambia sola solo si otro individuo es **claramente mejor**: probabilidad posterior
   ≈ 97,5 % de mayor utilidad (aproximación normal, conservadora). En las pruebas automáticas, ni una alarma en que los
   parámetros no vieron ninguna sentadilla los cambia; recién la tercera seguida. Si cambian, la validación anterior
-  queda como «sin validar». Las preconfiguraciones hechas antes de esta versión no guardaban la evidencia: hay que
-  preconfigurar una vez más para que aprenda. Importar parámetros descarta esa evidencia (no corresponde a la
+  queda como «sin validar». Las preconfiguraciones hechas antes de esta versión guardaban la evidencia de otra
+  forma: hay que preconfigurar una vez más para que aprenda. Importar parámetros descarta esa evidencia (no corresponde a la
   calibración importada).
 - **Resumen en la app** (tarjeta «Registro de mañanas»): por alcohol, tabaco, estrés y 7 h o más en cama, cuántas
   mañanas, ánimo medio (−1 a +1) y minutos hasta apagarla. **Exportar registro (CSV)**: una fila por mañana
@@ -161,9 +163,15 @@ La previa es uniforme, Beta(1,1).
   posteriori, **w·E[S] + (1−w)·E[E]**: la «exigencia» se adapta paso a paso y se ve en vivo en el paso siguiente.
 - **Empates**: gana el veto menos restrictivo, porque sin evidencia de trampa no se impone uno, y después el centro
   de la meseta de umbrales.
+- **Afinado genético**: la grilla solo prueba valores fijos y los conteos no distinguen un corte pegado a la trampa
+  observada de uno con margen. Al terminar la preconfiguración, una población de 40 detectores con parámetros
+  continuos parte de la mejor θ de la grilla y evoluciona 25 generaciones (torneo, cruce uniforme, mutación
+  gaussiana, elitismo); la aptitud es la misma utilidad bayesiana. Al elegido se le centra cada parámetro en su
+  meseta: el tramo de valores con la misma utilidad, es decir, a medio camino entre tus sentadillas y las trampas.
+  La población se guarda junto con los tramos grabados y sigue evolucionando con las alarmas.
 - **Resultados**: medias posteriores con intervalos de credibilidad del 95 % (colas iguales, cuantiles exactos de la
   Beta), la traza de aprendizaje paso a paso, la comparación con los valores por defecto y el conteo por paso. El
-  peso w se cambia al final y el resultado se recalcula al instante, sin volver a analizar.
+  peso w se cambia al final y el resultado se recalcula (la grilla al instante; el genético vuelve a evolucionar).
 - **Validación** (opcional, recomendada): 10 sentadillas, caminar y solo brazos, con datos que **no** se usaron en
   el ajuste. Muestra el posterior, P(S ≥ 0,8) y P(E ≥ 0,9). Las cifras de entrenamiento son optimistas porque θ se
   eligió con esos mismos datos; las de validación no.
@@ -239,6 +247,13 @@ tarjeta solo aparece en este modo); `adb shell dpm remove-active-admin` no funci
   corre las pruebas con señales sintéticas. Verifica que los vetos atrapan los brazos, que los cuantiles coinciden con
   SciPy, que la actualización incremental coincide con la evaluación desde cero y que el peso actúa en la dirección
   correcta. Solo necesita `gradle`.
+- `core-check/run.sh sim-body.kts`: simulación de usuarios. Cada usuario simulado tiene su forma de hacer
+  sentadillas, de sostener el teléfono y de hacer trampa acostado (almohadas, giro del teléfono); se preconfigura con
+  sus datos y se mide con datos nuevos, incluidas variantes de la trampa y 30 mañanas de alarmas. Los rangos de cada
+  rasgo son supuestos, no mediciones: sirve para comparar estrategias de aprendizaje, no para predecir cifras
+  reales. Con 60 usuarios: la trampa acostado contaba alguna sentadilla en el 93 % de los usuarios sin el veto, en
+  el 33 % con la grilla sola y en el 7 % con el genético centrado (28 % si se recuestan 10° más que al
+  preconfigurar), con la misma sensibilidad (99 %).
 - `tools/make_guides.py`: regenera los GIFs de postura (requiere Pillow).
 
 ## Limitaciones

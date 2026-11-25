@@ -1,5 +1,6 @@
 package com.squatalarm.app.ui
 
+import android.content.Context
 import android.media.AudioManager
 import android.media.ToneGenerator
 import androidx.activity.compose.BackHandler
@@ -48,6 +49,7 @@ import com.squatalarm.app.alarm.MorningLog
 import com.squatalarm.app.squat.BayesTuner
 import com.squatalarm.app.squat.Calibration
 import com.squatalarm.app.squat.Counts
+import com.squatalarm.app.squat.Evolver
 import com.squatalarm.app.squat.Posterior
 import com.squatalarm.app.squat.Segment
 import com.squatalarm.app.squat.SquatCounter
@@ -141,7 +143,7 @@ private class PreState {
  * Preconfiguración: series de 10 sentadillas intercaladas con 7 pruebas de falsación, cada paso
  * contrastado con lo que el usuario dice haber hecho. Tras cada paso el modelo bayesiano actualiza
  * sensibilidad y especificidad de todas las combinaciones de parámetros y el detector pasa a la mejor.
- * Al terminar se guarda solo; la validación prueba los parámetros con datos nuevos.
+ * Al terminar, [Evolver] afina la θ elegida y se guarda solo; la validación prueba los parámetros con datos nuevos.
  */
 @Composable
 fun PreconfigScreen(onDone: () -> Unit) {
@@ -255,11 +257,8 @@ fun PreconfigScreen(onDone: () -> Unit) {
                 val result = withContext(Dispatchers.Default) {
                     st.tuner.add(seg, w)
                     if (last) {
-                        // Evidencia base para aprender de las alarmas (cada una pesa 0,2 de un paso de aquí).
-                        // Si no se puede guardar, se descarta la anterior: no debe emparejarse con esta calibración.
-                        try { MorningLog.savePosterior(context, st.tuner) } catch (e: Exception) { MorningLog.forgetPosterior(context) }
                         prefs.learnedAlarms = 0
-                        val (cal, post) = st.tuner.best(w)
+                        val (cal, post) = evolveAndSave(context, st.tuner, w)
                         Triple(cal, post, Tuner.evaluate(st.tuner.segments, Calibration.DEFAULT, st.tuner.windowMs).posterior())
                     } else {
                         null
@@ -340,7 +339,7 @@ fun PreconfigScreen(onDone: () -> Unit) {
                     st,
                     onWeightChanged = {
                         scope.launch {
-                            val (cal, post) = withContext(Dispatchers.Default) { st.tuner.best(st.weight.toDouble()) }
+                            val (cal, post) = withContext(Dispatchers.Default) { evolveAndSave(context, st.tuner, st.weight.toDouble()) }
                             st.tuned = cal; st.tunedPost = post; st.valCounts = null
                             save(cal, null)
                         }
@@ -361,6 +360,22 @@ fun PreconfigScreen(onDone: () -> Unit) {
 }
 
 
+/**
+ * Afina en continuo la mejor θ de la grilla (genético) y guarda la población con los tramos grabados: es la evidencia
+ * base para aprender de las alarmas (cada una pesa 0,2 de un paso de aquí).
+ */
+private fun evolveAndSave(context: Context, tuner: BayesTuner, w: Double): Pair<Calibration, Posterior> {
+    val ev = Evolver.fromGrid(tuner, w)
+    // Si no se puede guardar, se descarta la anterior: no debe emparejarse con esta calibración.
+    try { MorningLog.savePosterior(context, ev) } catch (e: Exception) { MorningLog.forgetPosterior(context) }
+    val post = ev.posterior(ev.pop[0])
+    val cal = ev.pop[0].cal.copy(
+        calibrated = true, nSquats = tuner.segments.filter { it.positive }.sumOf { it.truth },
+        sens = post.sens.toFloat(), spec = post.spec.toFloat(),
+    )
+    return cal to post
+}
+
 @Composable
 private fun ColumnScope.Intro(st: PreState, sensorAvailable: Boolean, onStart: () -> Unit) {
     GuideGif("sentadilla")
@@ -369,7 +384,7 @@ private fun ColumnScope.Intro(st: PreState, sensorAvailable: Boolean, onStart: (
             "• Sostén el teléfono contra el pecho con las dos manos, pantalla hacia afuera: al bajar, tu torso se inclina y eso lo distingue de mover el teléfono con los brazos.\n" +
             "• ${st.totalSquats / 10} series de 10 sentadillas intercaladas con ${FALSIFICATIONS.size} pruebas de falsación de 20 s (quieto, caminar, sacudir, inclinarse, dos de solo brazos y una acostado). Cada paso trae un GIF de la postura.\n" +
             "• Tras cada paso te preguntamos qué hiciste realmente y el modelo bayesiano actualiza la sensibilidad y especificidad de ${BayesTuner.N} combinaciones de parámetros; el detector pasa a usar la mejor.\n" +
-            "• Al final se guarda solo, y puedes validarlo con datos nuevos."
+            "• Al final, un algoritmo genético afina esos parámetros dejando margen entre tus sentadillas y las trampas; se guarda solo, y puedes validarlo con datos nuevos."
     )
     Text("Sentadillas de entrenamiento: ${st.totalSquats} (${st.totalSquats / 10} series)")
     Slider(
@@ -496,8 +511,8 @@ private fun ColumnScope.TuneResult(st: PreState, onWeightChanged: () -> Unit, on
             PosteriorLines(it)
         }
         Text(
-            "Previa uniforme Beta(1,1) para cada combinación de parámetros; el detector usa la de mayor utilidad esperada " +
-                "a posteriori. Como se eligió con estos mismos datos, la cifra es optimista: la validación la pone a prueba con datos nuevos.",
+            "Previa uniforme Beta(1,1) para cada combinación de parámetros; el detector parte de la de mayor utilidad esperada " +
+                "a posteriori y un algoritmo genético la afina en continuo, centrando cada corte entre tus sentadillas y las trampas. Como se eligió con estos mismos datos, la cifra es optimista: la validación la pone a prueba con datos nuevos.",
             style = MaterialTheme.typography.bodySmall,
         )
     }

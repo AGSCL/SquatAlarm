@@ -255,43 +255,62 @@ require(RingPlan.untilText(30_000L) == "1 min" && RingPlan.untilText(45 * 60_000
 require(RingPlan.untilText(7 * 3_600_000L + 22 * 60_000L + 1) == "7 h 23 min" && RingPlan.untilText(-5L) == "0 min")
 require(RingPlan.volumeIndex(0.05f, 7) == 1 && RingPlan.volumeIndex(0f, 15) == 1) { "nunca muda" }
 
-// 11) Aprendizaje desde las alarmas: índice de θ, persistencia, peso 0,2 y regla «claramente mejor»
-for (i in listOf(0, BayesTuner.N - 1, tuner.bestIndex(0.5), 12345, 200_001, 700_003)) {
-    require(BayesTuner.indexOf(BayesTuner.calibration(i)) == i) { "indexOf(calibration($i))" }
-}
-require(BayesTuner.indexOf(Calibration.DEFAULT) == -1) { "los valores por defecto no están en la grilla" }
-val saved = java.io.ByteArrayOutputStream().also { tuner.write(it) }.toByteArray()
-fun loadTuner() = BayesTuner.read(java.io.ByteArrayInputStream(saved))!!
+// 11) Genético sobre el bayesiano: parte de la mejor θ de la grilla, no la empeora y centra los cortes
+val evo = Evolver.fromGrid(tuner, 0.5)
+val champ = evo.pop[0]
+require(evo.pop.size == Evolver.POP) { "tamaño de la población" }
 run {
-    val back = loadTuner()
-    require(back.windowMs == tuner.windowMs) { "ventana guardada" }
-    for (i in probe) {
-        val a = tuner.posterior(i)
-        val b = back.posterior(i)
-        require(a.aS == b.aS && a.bS == b.bS && a.aE == b.aE && a.bE == b.bE) { "posterior θ#$i ida y vuelta" }
+    val g = tuner.best(0.5).second
+    require(evo.utility(champ, 0.5) >= 0.5 * g.sens + 0.5 * g.spec - 1e-9) { "elitismo: el genético nunca empeora la utilidad de la grilla" }
+    val seeded = Evolver.fromGrid(tuner, 0.5, generations = 0)
+    val onGrid = Tuner.evaluate(steps, tuner.best(0.5).first, tuner.windowMs)
+    require(seeded.pop.any { it.c[0] == onGrid.tp.toFloat() && it.c[2] == onGrid.fp.toFloat() }) { "conteos de un individuo = evaluar su θ" }
+    // Sentadillas: pantalla a ≤ 25° de la vertical; trampa acostado: ≥ 75°. El corte debe quedar con margen a ambos lados.
+    require(champ.cal.flatMaxDeg in 40f..62f) { "corte acostado centrado: ${champ.cal.flatMaxDeg}" }
+    val reclined = segment("Más recostado", false, 0, lying.map { Smp(it.a, it.t, it.tiltDeg - 22.0) })
+    require(Tuner.replay(reclined, champ.cal) == 0) { "con margen, la trampa 22° más recostada tampoco pasa" }
+    require(Tuner.replay(reclined, tuner.best(0.5).first.copy(flatMaxDeg = 60f)) > 0) { "…y con el corte de la grilla (60°) sí pasaba" }
+    require(steps.filter { it.positive }.all { Tuner.replay(it, champ.cal) == 10 } && steps.filter { !it.positive }.all { Tuner.replay(it, champ.cal) == 0 }) { "sigue separando todo" }
+    println("Genético: bajada %.2f subida %.2f minCiclo %d pico≤%.1f inclinación %.1f–%.1f° acostado≤%.1f°".format(
+        champ.cal.thresholdDown, champ.cal.thresholdUp, champ.cal.minCycleMs, champ.cal.maxPeak, champ.cal.tiltMinDeg, champ.cal.tiltMaxDeg, champ.cal.flatMaxDeg))
+}
+
+// 12) Aprendizaje desde las alarmas: persistencia, peso 0,2, tope negativo y regla «claramente mejor»
+val saved = java.io.ByteArrayOutputStream().also { evo.write(it) }.toByteArray()
+fun loadEvo() = Evolver.read(java.io.ByteArrayInputStream(saved), 5L)!!
+run {
+    val back = loadEvo()
+    require(back.windowMs == evo.windowMs && back.pre.size == steps.size && back.pre[0].size == steps[0].size) { "tramos guardados" }
+    require(Evolver.sameGenes(back.pop[0].cal, champ.cal) && back.pop.size == evo.pop.size) { "población guardada, el elegido primero" }
+    for (k in evo.pop.indices) {
+        val a = evo.posterior(evo.pop[k])
+        val b = back.posterior(back.pop[k])
+        require(a.aS == b.aS && a.bS == b.bS && a.aE == b.aE && a.bE == b.bE) { "posterior del individuo $k ida y vuelta" }
     }
-    require(BayesTuner.read(java.io.ByteArrayInputStream(ByteArray(16))) == null) { "archivo ajeno → null" }
+    require(Evolver.read(java.io.ByteArrayInputStream(ByteArray(16))) == null) { "archivo ajeno → null" }
+    require(!Evolver.sameGenes(champ.cal, champ.cal.copy(flatMaxDeg = 33f)) && Evolver.sameGenes(champ.cal, champ.cal.copy(sens = 0.5f))) { "sameGenes ignora las métricas" }
 }
-val i0 = tuner.bestIndex(0.5)
 val softSquats = segment("Alarma", true, 10, squats(10, amp = 1.0f))
-require(Tuner.replay(softSquats, BayesTuner.calibration(i0)) < 10) { "la θ de la preconfiguración no ve estas sentadillas suaves" }
+val missed = 10 - Tuner.replay(softSquats, champ.cal)
+require(missed > 0) { "la θ de la preconfiguración no ve estas sentadillas suaves" }
 run {
-    val full = loadTuner().also { it.add(softSquats, 0.5, 1f) }
-    val fifth = loadTuner().also { it.add(softSquats, 0.5, Tuner.ALARM_EVIDENCE) }
-    val dFull = full.posterior(i0).bS - tuner.posterior(i0).bS
-    val dFifth = fifth.posterior(i0).bS - tuner.posterior(i0).bS
-    require(dFull > 0 && near(dFifth, 0.2 * dFull, 1e-3)) { "una alarma suma 0,2 de un tramo: $dFifth vs $dFull" }
+    val e = loadEvo()
+    require(e.learnFromAlarm(softSquats, 0.5) == null) { "una sola alarma no cambia los parámetros" }
+    val dFn = e.posterior(e.pop[0]).bS - evo.posterior(champ).bS
+    require(near(dFn, 0.2 * missed, 1e-4)) { "una alarma suma 0,2 de un tramo: $dFn vs $missed" }
+    val back = Evolver.read(java.io.ByteArrayInputStream(java.io.ByteArrayOutputStream().also { e.write(it) }.toByteArray()))!!
+    require(back.alarms.size == 1 && back.posterior(back.pop[0]).bS == e.posterior(e.pop[0]).bS) { "la alarma se guarda con la población" }
 }
-require(!Tuner.clearlyBetter(tuner.posterior(i0), tuner.posterior(i0), 0.5)) { "igual → no" }
+require(!Tuner.clearlyBetter(evo.posterior(champ), evo.posterior(champ), 0.5)) { "igual → no" }
 require(Tuner.clearlyBetter(Posterior(101.0, 1.0, 101.0, 1.0), Posterior(51.0, 51.0, 51.0, 51.0), 0.5)) { "mucho mejor → sí" }
 require(!Tuner.clearlyBetter(Posterior(4.0, 1.0, 4.0, 1.0), Posterior(3.0, 2.0, 3.0, 2.0), 0.5)) { "con poca evidencia → no" }
 run {
     // Una alarma con mucho rato quieto aporta como mucho las ventanas negativas de una falsación (× 0,2).
     val lazy = segment("Alarma lenta", true, 10, noise(150, 0.1f) + squats(10).map { Smp(it.a, it.t + 150_000L, it.tiltDeg) })
-    val t2 = loadTuner()
-    Tuner.learnFromAlarm(t2, lazy, 0.5, i0)
-    val cap = Tuner.FALSIFICATION_MS / tuner.windowMs
-    val dNeg = (t2.posterior(i0).aE + t2.posterior(i0).bE) - (tuner.posterior(i0).aE + tuner.posterior(i0).bE)
+    val e = loadEvo()
+    e.learnFromAlarm(lazy, 0.5)
+    val cap = Tuner.FALSIFICATION_MS / evo.windowMs
+    val dNeg = e.posterior(e.pop[0]).let { it.aE + it.bE } - evo.posterior(champ).let { it.aE + it.bE }
     require(lazy.negWindows > cap && dNeg <= Tuner.ALARM_EVIDENCE * cap + 1e-4) { "tope negativo: $dNeg con ${lazy.negWindows} ventanas" }
 }
 // Qué tramo de la alarma se graba: los últimos 3 min, o desde 30 s antes de la primera sentadilla (máx. 10 min)
@@ -301,19 +320,24 @@ require(Tuner.alarmKeepFrom(1_000_000L, 950_000L) == 820_000L) { "sentadillas re
 require(Tuner.alarmKeepFrom(1_000_000L, 100_000L) == 400_000L) { "tope de 10 min" }
 run {
     // Enfriamiento: la preconfiguración pesa más; una alarma distinta no mueve θ, varias consistentes sí.
-    val learner = loadTuner()
+    val learner = loadEvo()
     var switchedAt = -1
     for (k in 1..60) {
         val seg = segment("Alarma $k", true, 10, squats(10, amp = 1.0f))
-        val new = Tuner.learnFromAlarm(learner, seg, 0.5, i0)
+        val new = learner.learnFromAlarm(seg, 0.5)
         if (new != null) {
             switchedAt = k
-            require(Tuner.replay(seg, BayesTuner.calibration(new)) == 10) { "la θ nueva cuenta las sentadillas suaves" }
-            require(steps.filter { it.positive }.all { Tuner.replay(it, BayesTuner.calibration(new)) == 10 }) { "y sigue contando las de la preconfiguración" }
+            require(learner.pop[0] === new && learner.pop.size == Evolver.POP) { "el nuevo pasa a ser el del detector" }
+            require(Tuner.replay(seg, new.cal) > 10 - missed) { "la θ nueva cuenta más sentadillas suaves" }
+            require(steps.filter { it.positive }.all { Tuner.replay(it, new.cal) == 10 }) { "y sigue contando las de la preconfiguración" }
+            require(Tuner.replay(steps[9], new.cal) == 0 && new.cal.flatMaxDeg < SquatCounter.NO_FLAT_LIMIT) { "sin soltar el veto acostado" }
             break
         }
     }
     println("Aprendizaje: la θ cambia recién en la alarma $switchedAt (cada una pesa ${Tuner.ALARM_EVIDENCE})")
+    val many = loadEvo()
+    repeat(3) { many.learnFromAlarm(segment("larga", true, 10, noise(1300, 0.1f) + squats(10).map { Smp(it.a, it.t + 1_300_000L, it.tiltDeg) }), 0.5) }
+    require(many.alarms.size == 2) { "con más de ${Evolver.ALARM_SAMPLES} muestras se olvidan las alarmas antiguas: ${many.alarms.size}" }
     require(switchedAt > 1) { "una sola alarma no debe cambiar los parámetros (switch en $switchedAt)" }
 }
 
@@ -326,7 +350,7 @@ run {
     require(s.size == n / 2) { "dropBefore antes del inicio no hace nada" }
 }
 
-// 12) Registro de mañanas: CSV, horas en cama y resumen
+// 13) Registro de mañanas: CSV, horas en cama y resumen
 require(CheckIn.hoursInBed(23 * 60 + 30, 7 * 60) == 7.5 && CheckIn.hoursInBed(60, 7 * 60) == 6.0) { "cruza la medianoche" }
 run {
     val r = CheckIn("2026-10-16", "07:00", 1L, 3.25, "sentadillas", 9, 10, 1, true, false, "23:30", 7.5, null, "cambió: bajada 1,3 → 1,1")
