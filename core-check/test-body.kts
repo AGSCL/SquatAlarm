@@ -260,13 +260,14 @@ val evo = Evolver.fromGrid(tuner, 0.5)
 val champ = evo.pop[0]
 require(evo.pop.size == Evolver.POP) { "tamaño de la población" }
 run {
-    val g = tuner.best(0.5).second
-    require(evo.utility(champ, 0.5) >= 0.5 * g.sens + 0.5 * g.spec - 1e-9) { "elitismo: el genético nunca empeora la utilidad de la grilla" }
     val seeded = Evolver.fromGrid(tuner, 0.5, generations = 0)
+    require(evo.utility(champ, 0.5) >= seeded.utility(seeded.pop[0], 0.5) - 1e-9) { "elitismo: evolucionar nunca empeora la utilidad de partida" }
     val onGrid = Tuner.evaluate(steps, tuner.best(0.5).first, tuner.windowMs)
-    require(seeded.pop.any { it.c[0] == onGrid.tp.toFloat() && it.c[2] == onGrid.fp.toFloat() }) { "conteos de un individuo = evaluar su θ" }
-    // Sentadillas: pantalla a ≤ 25° de la vertical; trampa acostado: ≥ 75°. El corte debe quedar con margen a ambos lados.
-    require(champ.cal.flatMaxDeg in 40f..62f) { "corte acostado centrado: ${champ.cal.flatMaxDeg}" }
+    require(seeded.pop.any { it.c[2] == onGrid.fp.toFloat() && it.c[3] == onGrid.tn.toFloat() }) { "conteos negativos de un individuo = evaluar su θ" }
+    // Sentadillas: pantalla a ≤ 25° de la vertical; trampa acostado: ≥ 75°. El corte queda con holgura (≥ 5°) sobre las
+    // sentadillas y más cerca de ellas que de la trampa (a un tercio: ~45°).
+    require(champ.cal.flatMaxDeg in 30f..50f) { "corte acostado: ${champ.cal.flatMaxDeg}" }
+    require(champ.cal.tiltMinDeg in 4f..23f && champ.cal.tiltMaxDeg >= 30f) { "holgura de inclinación (sentadillas: 25°): ${champ.cal.tiltMinDeg}–${champ.cal.tiltMaxDeg}" }
     val reclined = segment("Más recostado", false, 0, lying.map { Smp(it.a, it.t, it.tiltDeg - 22.0) })
     require(Tuner.replay(reclined, champ.cal) == 0) { "con margen, la trampa 22° más recostada tampoco pasa" }
     require(Tuner.replay(reclined, tuner.best(0.5).first.copy(flatMaxDeg = 60f)) > 0) { "…y con el corte de la grilla (60°) sí pasaba" }

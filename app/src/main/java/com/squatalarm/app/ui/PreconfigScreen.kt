@@ -94,6 +94,12 @@ private val FALSIFICATIONS = listOf(
             "y vuelve al pecho, al ritmo de una sentadilla. Es lo que se puede hacer desde la cama para engañar a la alarma.",
         0, 20, false, "acostado",
     ),
+    RecStep(
+        "Falsación: acostado, de otra forma", false,
+        "Otra vez acostado, pero distinto: más recostado en la almohada o de lado, y girando el teléfono mientras " +
+            "estiras los brazos. Cuanto más variada sea la trampa que grabes, mejor la distingue después.",
+        0, 20, false, "acostado",
+    ),
 )
 
 /** Series intercaladas con falsaciones: contrabalancea la fatiga y el posterior aprende ambos lados desde el inicio. */
@@ -140,7 +146,7 @@ private class PreState {
 }
 
 /**
- * Preconfiguración: series de 10 sentadillas intercaladas con 7 pruebas de falsación, cada paso
+ * Preconfiguración: series de 10 sentadillas intercaladas con 8 pruebas de falsación, cada paso
  * contrastado con lo que el usuario dice haber hecho. Tras cada paso el modelo bayesiano actualiza
  * sensibilidad y especificidad de todas las combinaciones de parámetros y el detector pasa a la mejor.
  * Al terminar, [Evolver] afina la θ elegida y se guarda solo; la validación prueba los parámetros con datos nuevos.
@@ -382,7 +388,7 @@ private fun ColumnScope.Intro(st: PreState, sensorAvailable: Boolean, onStart: (
     Text(
         "Esta fase mide cómo se mueve tu teléfono cuando haces sentadillas y cuando NO las haces, y ajusta la detección a ti.\n\n" +
             "• Sostén el teléfono contra el pecho con las dos manos, pantalla hacia afuera: al bajar, tu torso se inclina y eso lo distingue de mover el teléfono con los brazos.\n" +
-            "• ${st.totalSquats / 10} series de 10 sentadillas intercaladas con ${FALSIFICATIONS.size} pruebas de falsación de 20 s (quieto, caminar, sacudir, inclinarse, dos de solo brazos y una acostado). Cada paso trae un GIF de la postura.\n" +
+            "• ${st.totalSquats / 10} series de 10 sentadillas intercaladas con ${FALSIFICATIONS.size} pruebas de falsación de 20 s (quieto, caminar, sacudir, inclinarse, dos de solo brazos y dos acostado). Cada paso trae un GIF de la postura.\n" +
             "• Tras cada paso te preguntamos qué hiciste realmente y el modelo bayesiano actualiza la sensibilidad y especificidad de ${BayesTuner.N} combinaciones de parámetros; el detector pasa a usar la mejor.\n" +
             "• Al final, un algoritmo genético afina esos parámetros dejando margen entre tus sentadillas y las trampas; se guarda solo, y puedes validarlo con datos nuevos."
     )

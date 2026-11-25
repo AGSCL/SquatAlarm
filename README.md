@@ -99,7 +99,7 @@ vieja; al reinstalar la nueva, los parámetros reaparecen).
 
 ### Pasos
 
-Las series de 10 sentadillas (30–60 en total) van **intercaladas** con 7 pruebas de falsación de 20 s, para que el
+Las series de 10 sentadillas (30–60 en total) van **intercaladas** con 8 pruebas de falsación de 20 s, para que el
 modelo aprenda desde el inicio qué es y qué no es una sentadilla y para repartir la fatiga. Antes de cada paso se ve
 un GIF de la postura. Un pitido marca el inicio y, en las falsaciones, también el final, porque con el teléfono contra
 el pecho no se ve la pantalla. Tras cada paso la app dice cuánto contó y pregunta qué hiciste realmente; si el
@@ -116,7 +116,7 @@ conteo no coincide, la diferencia queda registrada como falsos positivos o falso
 <td align="center"><img src="app/src/main/assets/guides/inclinarse.gif" width="150"><br>Falsación: inclinarse<br>(rodillas rectas)</td>
 <td align="center"><img src="app/src/main/assets/guides/brazos_lento.gif" width="150"><br>Falsación: solo brazos,<br>lento y vertical</td>
 <td align="center"><img src="app/src/main/assets/guides/brazos_rapido.gif" width="150"><br>Falsación: solo brazos,<br>rápido</td>
-<td align="center"><img src="app/src/main/assets/guides/acostado.gif" width="150"><br>Falsación: acostado,<br>brazos arriba</td>
+<td align="center"><img src="app/src/main/assets/guides/acostado.gif" width="150"><br>Falsación: acostado,<br>brazos arriba (dos veces:<br>la segunda, de otra forma)</td>
 </tr>
 </table>
 
@@ -166,8 +166,16 @@ La previa es uniforme, Beta(1,1).
 - **Afinado genético**: la grilla solo prueba valores fijos y los conteos no distinguen un corte pegado a la trampa
   observada de uno con margen. Al terminar la preconfiguración, una población de 40 detectores con parámetros
   continuos parte de la mejor θ de la grilla y evoluciona 25 generaciones (torneo, cruce uniforme, mutación
-  gaussiana, elitismo); la aptitud es la misma utilidad bayesiana. Al elegido se le centra cada parámetro en su
-  meseta: el tramo de valores con la misma utilidad, es decir, a medio camino entre tus sentadillas y las trampas.
+  gaussiana, elitismo); la aptitud es la misma utilidad bayesiana. Tres reglas salieron de simular usuarios:
+  - **Margen**: al elegido se le ubica cada parámetro dentro de su meseta (el tramo de valores con la misma
+    utilidad). Los umbrales van al centro; los vetos, a un tercio del lado de tus sentadillas, porque el torso las
+    repite casi iguales y las trampas varían mucho más de un día a otro.
+  - **Holgura**: una sentadilla de la preconfiguración solo vale como detectada si pasaría los vetos apretados
+    (pico −0,5 m/s², inclinación +2°/−5°, horizontalidad −5°). Sin esto, un corte a 2° de las sentadillas grabadas
+    daba 30/30 en la calibración y 25 % con sentadillas nuevas.
+  - **Variedad**: la trampa acostado se graba dos veces, la segunda «de otra forma». Las trampas que más pasaban
+    eran variantes que no se habían grabado.
+
   La población se guarda junto con los tramos grabados y sigue evolucionando con las alarmas.
 - **Resultados**: medias posteriores con intervalos de credibilidad del 95 % (colas iguales, cuantiles exactos de la
   Beta), la traza de aprendizaje paso a paso, la comparación con los valores por defecto y el conteo por paso. El
@@ -251,9 +259,11 @@ tarjeta solo aparece en este modo); `adb shell dpm remove-active-admin` no funci
   sentadillas, de sostener el teléfono y de hacer trampa acostado (almohadas, giro del teléfono); se preconfigura con
   sus datos y se mide con datos nuevos, incluidas variantes de la trampa y 30 mañanas de alarmas. Los rangos de cada
   rasgo son supuestos, no mediciones: sirve para comparar estrategias de aprendizaje, no para predecir cifras
-  reales. Con 60 usuarios: la trampa acostado contaba alguna sentadilla en el 93 % de los usuarios sin el veto, en
-  el 33 % con la grilla sola y en el 7 % con el genético centrado (28 % si se recuestan 10° más que al
-  preconfigurar), con la misma sensibilidad (99 %).
+  reales. `SIM_USERS` y `SIM_SEED` cambian cuántos y cuáles. Con 100 usuarios que no se usaron para elegir las
+  reglas (`SIM_SEED=2000`): la trampa acostado contaba alguna sentadilla en el 16 % de los usuarios con la grilla
+  sola y en el 5 % con el genético (14 % si se recuestan 10° más que al preconfigurar; 40 % con una variante
+  extrema); usuarios con menos del 95 % de sus sentadillas contadas, 6 % → 1 %; con algún falso positivo de pie,
+  35 % → 17 %.
 - `tools/make_guides.py`: regenera los GIFs de postura (requiere Pillow).
 
 ## Limitaciones

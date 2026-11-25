@@ -4,7 +4,7 @@ package com.squatalarm.app.squat
  * Aprendizaje genético sobre el bayesiano. La grilla de [BayesTuner] busca en valores fijos; aquí una población de
  * detectores con parámetros CONTINUOS (los genes) evoluciona por selección, cruce y mutación, partiendo de la mejor θ
  * de la grilla. La aptitud de cada individuo es la misma utilidad bayesiana: w·E[sens] + (1−w)·E[esp] con sus
- * posteriores Beta(1,1) + conteos.
+ * posteriores Beta(1,1) + conteos (la sensibilidad de la preconfiguración se cuenta con holgura).
  *
  * Se guardan los tramos grabados —la preconfiguración entera y las alarmas recientes— y todo individuo se evalúa con
  * ellos de forma exacta: las falsaciones son la única evidencia de trampas y no deben perderse al mutar. (Heredar de
@@ -29,7 +29,9 @@ class Evolver(val pre: List<Segment>, val windowMs: Long, seed: Long = 1L) {
 
     private fun born(cal: Calibration): Ind {
         val c = FloatArray(4)
-        for (s in pre) addCounts(c, s, cal, 1f, Int.MAX_VALUE)
+        // Holgura: una sentadilla de la preconfiguración solo vale como detectada si pasaría con margen (ver [strict]).
+        val strict = strict(cal)
+        for (s in pre) addCounts(c, s, if (s.truth > 0) strict else cal, 1f, Int.MAX_VALUE)
         // Los negativos de una alarma (el rato acostado), como mucho los de una falsación.
         val cap = maxOf(1, (Tuner.FALSIFICATION_MS / windowMs).toInt())
         for (s in alarms) addCounts(c, s, cal, Tuner.ALARM_EVIDENCE, cap)
@@ -87,9 +89,10 @@ class Evolver(val pre: List<Segment>, val windowMs: Long, seed: Long = 1L) {
     fun best(w: Double): Ind = pop.maxByOrNull { utility(it, w) }!!
 
     /**
-     * Centra cada gen en su meseta: el tramo de valores que da la misma utilidad con los demás genes fijos. Los conteos
-     * no distinguen un corte pegado a la trampa observada (61° si se hizo a 62°) de uno con margen; con datos nuevos sí
-     * importa: la simulación de usuarios (core-check/sim-body.kts) mostró que sin esto la trampa acostado pasaba igual.
+     * Ubica cada gen dentro de su meseta: el tramo de valores que da la misma utilidad con los demás genes fijos. Los
+     * conteos no distinguen un corte pegado a la trampa observada (61° si se hizo a 62°) de uno con margen; con datos
+     * nuevos sí importa: la simulación de usuarios (core-check/sim-body.kts) mostró que sin esto la trampa acostado
+     * pasaba igual. Los umbrales van al centro; los vetos, a [SPLIT] del lado de las sentadillas.
      * Bisección: supone que la meseta es un intervalo.
      */
     private fun centered(ind: Ind, w: Double): Ind {
@@ -109,7 +112,8 @@ class Evolver(val pre: List<Segment>, val windowMs: Long, seed: Long = 1L) {
                 repeat(6) { val m = (a + b) / 2f; if (ok(m)) a = m else b = m }
                 return a
             }
-            val mid = (edge(LO[k]) + edge(HI[k])) / 2f
+            val lo = edge(LO[k])
+            val mid = lo + SPLIT[k] * (edge(HI[k]) - lo)
             if (ok(mid)) g[k] = mid // si la meseta no era un intervalo, el gen queda como estaba
         }
         return born(calibration(g))
@@ -156,12 +160,27 @@ class Evolver(val pre: List<Segment>, val windowMs: Long, seed: Long = 1L) {
         /** Tope de muestras de alarmas guardadas (~50 min a 50 Hz, unos 4 MB): con más, se olvidan las más antiguas. */
         const val ALARM_SAMPLES = 150_000
         private const val FORMAT = 1
-
         // Genes: bajada, subida, ciclo mínimo, pico máximo, inclinación mínima y máxima, horizontalidad máxima.
         private const val GENES = 7
         private val LO = floatArrayOf(0.4f, 0.4f, 250f, 3f, 0f, 25f, 20f)
         private val HI = floatArrayOf(3f, 3f, 600f, 12f, 25f, 120f, 85f)
         private val SD = floatArrayOf(0.15f, 0.15f, 40f, 0.8f, 3f, 8f, 6f)
+        /**
+         * Dónde queda cada gen dentro de su meseta (0 = borde bajo, 1 = alto). Los vetos, a un tercio del lado de las
+         * sentadillas: el torso las repite casi iguales y las trampas varían mucho más de un día a otro.
+         */
+        private val SPLIT = floatArrayOf(0.5f, 0.5f, 0.5f, 1f / 3, 2f / 3, 1f / 3, 1f / 3)
+
+        /**
+         * [c] con los vetos apretados: lo que una sentadilla de la preconfiguración debe pasar para valer como detectada.
+         * Sin esta holgura, un corte a 2° de las sentadillas grabadas daba 30/30 en la calibración y 25 % con sentadillas
+         * nuevas (usuario simulado). Solo en la preconfiguración: las alarmas ya son sentadillas en condiciones reales.
+         * shortcut: holguras fijas elegidas con usuarios simulados; ajustarlas cuando haya grabaciones reales.
+         */
+        private fun strict(c: Calibration) = c.copy(
+            maxPeak = c.maxPeak - 0.5f, tiltMinDeg = c.tiltMinDeg + 2f, tiltMaxDeg = c.tiltMaxDeg - 5f, flatMaxDeg = c.flatMaxDeg - 5f,
+        )
+
         /** Valor «sin veto» de cada gen (NaN = no es un veto). */
         private val NONE = floatArrayOf(Float.NaN, Float.NaN, Float.NaN, SquatCounter.NO_LIMIT, 0f, 180f, SquatCounter.NO_FLAT_LIMIT)
 

@@ -73,11 +73,15 @@ fun seg(name: String, truth: Int, sig: List<Smp>): Segment {
     return s
 }
 
-/** Pasos de la preconfiguración en el orden de la app (3 series; la falsación acostado va al final). */
-fun preconfig(u: User, withLying: Boolean): List<Segment> {
+/**
+ * Pasos de la preconfiguración en el orden de la app: 3 series y, al final, las dos falsaciones acostado
+ * (la segunda «de otra forma»: cada usuario la varía a su manera).
+ */
+fun preconfig(u: User): List<Segment> {
     val f = u.falsifications().map { seg(it.first, 0, it.second) }
     val s = (1..3).map { seg("Serie $it", 10, u.squats(10)) }
-    return listOf(s[0], f[0], f[1], f[2], s[1], f[3], f[4], f[5], s[2]) + (if (withLying) listOf(seg("acostado", 0, u.lying())) else emptyList())
+    return listOf(s[0], f[0], f[1], f[2], s[1], f[3], f[4], f[5], s[2], seg("acostado", 0, u.lying()),
+        seg("acostado, de otra forma", 0, u.lying(extraBed = u.q.u(4.0, 16.0), wob = u.q.u(1.1, 1.6))))
 }
 
 /** Datos nuevos: sentadillas normales y «de mañana» (más suaves), falsaciones y variantes de la trampa acostado. */
@@ -88,22 +92,23 @@ class Held(u: User) {
     val lying = seg("acostado", 0, u.lying())
     val lyingPillow = seg("acostado +10° de almohada", 0, u.lying(extraBed = 10.0))
     val lyingWobble = seg("acostado, gira más el teléfono", 0, u.lying(wob = 1.4))
+    val lyingHard = seg("acostado +20° y gira mucho más", 0, u.lying(extraBed = 20.0, wob = 1.7))
 }
 
 class Score(val name: String) {
-    var n = 0; var sens = 0.0; var sensM = 0.0; var lowSens = 0
+    var n = 0; var sens = 0.0; var sensM = 0.0; var lowSens = 0; var low95 = 0
     var fpStand = 0.0; var anyStand = 0
-    val lyFp = DoubleArray(3); val lyAny = IntArray(3)
+    val lyFp = DoubleArray(4); val lyAny = IntArray(4)
     val flat = ArrayList<Float>()
     val byStep = LinkedHashMap<String, Int>()
     fun add(c: Calibration, h: Held) {
         n++
         val s = Tuner.replay(h.squats, c) / 20.0
-        sens += s.coerceAtMost(1.0); if (s < 0.8) lowSens++
+        sens += s.coerceAtMost(1.0); if (s < 0.8) lowSens++; if (s < 0.95) low95++
         sensM += (Tuner.replay(h.morning, c) / 20.0).coerceAtMost(1.0)
         val fs = h.standing.sumOf { st -> Tuner.replay(st, c).also { if (it > 0) byStep[st.name] = (byStep[st.name] ?: 0) + 1 } }
         fpStand += fs; if (fs > 0) anyStand++
-        for ((i, l) in listOf(h.lying, h.lyingPillow, h.lyingWobble).withIndex()) {
+        for ((i, l) in listOf(h.lying, h.lyingPillow, h.lyingWobble, h.lyingHard).withIndex()) {
             val d = Tuner.replay(l, c); lyFp[i] += d.toDouble(); if (d > 0) lyAny[i]++
         }
         flat.add(c.flatMaxDeg)
@@ -111,9 +116,9 @@ class Score(val name: String) {
     fun p(x: Double) = "%5.1f %%".format(100 * x)
     fun print() {
         val veto = flat.count { it < SquatCounter.NO_FLAT_LIMIT }
-        println("%-34s sens %s (suaves %s; <80 %%: %s) | de pie: FP/usuario %.2f, con alguno %s | acostado con alguna contada: igual %s · +almohada %s · +giro %s | veto acostado en %s (mediana %.0f°)".format(
-            name, p(sens / n), p(sensM / n), p(lowSens.toDouble() / n), fpStand / n, p(anyStand.toDouble() / n),
-            p(lyAny[0].toDouble() / n), p(lyAny[1].toDouble() / n), p(lyAny[2].toDouble() / n), p(veto.toDouble() / n),
+        println("%-34s sens %s (suaves %s; <95 %%: %s; <80 %%: %s) | de pie: FP/usuario %.2f, con alguno %s | acostado con alguna contada: igual %s · +almohada %s · +giro %s · extrema %s | veto acostado en %s (mediana %.0f°)".format(
+            name, p(sens / n), p(sensM / n), p(low95.toDouble() / n), p(lowSens.toDouble() / n), fpStand / n, p(anyStand.toDouble() / n),
+            p(lyAny[0].toDouble() / n), p(lyAny[1].toDouble() / n), p(lyAny[2].toDouble() / n), p(lyAny[3].toDouble() / n), p(veto.toDouble() / n),
             flat.sorted()[flat.size / 2]))
         println("    usuarios con falsos positivos de pie, por prueba: $byStep")
     }
@@ -131,45 +136,28 @@ fun morning(u: User): Segment {
 }
 
 val USERS = (System.getenv("SIM_USERS") ?: "60").toInt()
+val SEED = (System.getenv("SIM_SEED") ?: "1000").toLong()
 val MORNINGS = 30
-val before = Score("Antes (sin falsación acostado)")
-val grid = Score("Grilla bayesiana (90/60/40°)")
-val center = Score("Grilla + centrado (0 generaciones)")
+val grid = Score("Grilla bayesiana sola")
 val ga = Score("Grilla + genético")
 val gaM = Score("… tras $MORNINGS mañanas")
-val gridM = Score("Grilla tras $MORNINGS mañanas (método anterior)")
-val GRID_ALARMS = System.getenv("SIM_GRID_ALARMS") != null // lento: re-analiza cada mañana con toda la grilla
 val t0 = System.currentTimeMillis()
 var gaMs = 0L; var learnMs = 0L; var switches = 0
 for (id in 1..USERS) {
-    val u = User(Gen(1000L + id))
+    val u = User(Gen(SEED + id))
     val h = Held(u)
-    val steps = preconfig(u, true)
-    val a = BayesTuner(); for (s in steps.dropLast(1)) a.add(s, 0.5)
-    before.add(a.best(0.5).first, h)
-    val b = BayesTuner(); for (s in steps) b.add(s, 0.5)
+    val b = BayesTuner(); for (s in preconfig(u)) b.add(s, 0.5)
     grid.add(b.best(0.5).first, h)
-    center.add(Evolver.fromGrid(b, 0.5, id.toLong(), 0).pop[0].cal, h)
     val t1 = System.currentTimeMillis()
     val e = Evolver.fromGrid(b, 0.5, id.toLong())
     gaMs += System.currentTimeMillis() - t1
-    require(e.utility(e.pop[0], 0.5) >= b.best(0.5).second.let { 0.5 * it.sens + 0.5 * it.spec } - 1e-6) { "el genético no puede empeorar la grilla" }
     ga.add(e.pop[0].cal, h)
     val mornings = List(MORNINGS) { morning(u) }
     val t2 = System.currentTimeMillis()
     for (m in mornings) if (e.learnFromAlarm(m, 0.5) != null) switches++
     learnMs += System.currentTimeMillis() - t2
     gaM.add(e.pop[0].cal, h)
-    if (GRID_ALARMS) {
-        var cur = b.bestIndex(0.5)
-        for (m in mornings) {
-            b.add(m, 0.5, Tuner.ALARM_EVIDENCE, maxOf(1, (Tuner.FALSIFICATION_MS / b.windowMs).toInt()))
-            val best = b.bestIndex(0.5)
-            if (best != cur && Tuner.clearlyBetter(b.posterior(best), b.posterior(cur), 0.5)) cur = best
-        }
-        gridM.add(BayesTuner.calibration(cur), h)
-    }
 }
-println("$USERS usuarios simulados, ${(System.currentTimeMillis() - t0) / 1000} s (genético: ${gaMs / USERS} ms por usuario; cada mañana ${learnMs / USERS / MORNINGS} ms; cambios de detección por usuario en $MORNINGS mañanas: %.1f)".format(switches.toDouble() / USERS))
-for (s in listOf(before, grid, center, ga, gaM) + (if (GRID_ALARMS) listOf(gridM) else emptyList())) s.print()
+println("$USERS usuarios simulados (semilla $SEED), ${(System.currentTimeMillis() - t0) / 1000} s (genético: ${gaMs / USERS} ms por usuario; cada mañana ${learnMs / USERS / MORNINGS} ms; cambios de detección por usuario en $MORNINGS mañanas: %.1f)".format(switches.toDouble() / USERS))
+for (s in listOf(grid, ga, gaM)) s.print()
 tasks.register("coreTest") { doLast { println("simulación terminada") } }
