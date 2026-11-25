@@ -1,6 +1,8 @@
 package com.squatalarm.app.squat
 
+import kotlin.math.abs
 import kotlin.math.acos
+import kotlin.math.asin
 
 /**
  * Máquina de estados que cuenta sentadillas a partir de la aceleración vertical (m/s², + = arriba)
@@ -11,7 +13,9 @@ import kotlin.math.acos
  * (frena abajo y se impulsa). Cada ciclo candidato se acepta o se veta por:
  *  - pico máximo: los brazos mueven el teléfono mucho más bruscamente que el torso;
  *  - inclinación: con el teléfono contra el pecho, el torso se inclina al bajar; moviéndolo
- *    con los brazos la inclinación suele ser nula (teléfono vertical) o exagerada.
+ *    con los brazos la inclinación suele ser nula (teléfono vertical) o exagerada;
+ *  - horizontalidad: de pie, el teléfono contra el pecho pasa por la vertical en algún momento del ciclo;
+ *    acostado (brazos hacia arriba desde la cama) queda horizontal todo el ciclo.
  * Un ciclo vetado pasa por los mismos estados que uno contado: así el replay con vetos
  * aplicados después es idéntico a contar en vivo con esos vetos.
  */
@@ -23,14 +27,18 @@ class SquatCounter(
     var maxPeak: Float = NO_LIMIT,
     var tiltMinDeg: Float = 0f,
     var tiltMaxDeg: Float = 180f,
+    var flatMaxDeg: Float = NO_FLAT_LIMIT,
     var refractoryMs: Long = 700L,
 ) {
     enum class State { IDLE, DESCENDING, BOTTOM, REFRACTORY }
 
-    enum class Reject { NONE, TOO_HARD, TOO_LITTLE_TILT, TOO_MUCH_TILT }
+    enum class Reject { NONE, TOO_HARD, TOO_LITTLE_TILT, TOO_MUCH_TILT, LYING }
 
-    /** Un ciclo candidato. negPeak < 0. Si [reject] != NONE no se contó. */
-    class Squat(val negPeak: Float, val posPeak: Float, val cycleMs: Long, val tiltDeg: Float, val reject: Reject)
+    /**
+     * Un ciclo candidato. negPeak < 0. [flatDeg]: lo más cerca de la vertical que estuvo la pantalla en el ciclo
+     * (0° = vertical, de pie; 90° = horizontal, acostado). Si [reject] != NONE no se contó.
+     */
+    class Squat(val negPeak: Float, val posPeak: Float, val cycleMs: Long, val tiltDeg: Float, val flatDeg: Float, val reject: Reject)
 
     var count = 0
         private set
@@ -51,6 +59,7 @@ class SquatCounter(
     private var g0y = 0f
     private var g0z = 1f
     private var minCos = 1f
+    private var minAbsGz = 1f
 
     fun reset() {
         count = 0
@@ -59,6 +68,7 @@ class SquatCounter(
         tPrev = 0L; tDown = 0L; tLastBelow = 0L; tLobeStart = 0L; tReady = 0L
         negPeak = 0f; posPeak = 0f
         minCos = 1f
+        minAbsGz = 1f
     }
 
     /**
@@ -75,6 +85,7 @@ class SquatCounter(
         if (state == State.DESCENDING || state == State.BOTTOM) {
             val c = gx * g0x + gy * g0y + gz * g0z
             if (c < minCos) minCos = c
+            if (abs(gz) < minAbsGz) minAbsGz = abs(gz)
         }
 
         when (state) {
@@ -85,6 +96,7 @@ class SquatCounter(
                 negPeak = a
                 g0x = gx; g0y = gy; g0z = gz
                 minCos = 1f
+                minAbsGz = abs(gz)
             }
             State.DESCENDING -> {
                 if (a < -thresholdDown) {
@@ -96,6 +108,7 @@ class SquatCounter(
                         negPeak = a
                         g0x = gx; g0y = gy; g0z = gz
                         minCos = 1f
+                        minAbsGz = abs(gz)
                     }
                     tLastBelow = t
                     if (a < negPeak) negPeak = a
@@ -118,9 +131,10 @@ class SquatCounter(
                     state = State.REFRACTORY
                     tReady = t + refractoryMs
                     val tilt = tiltDeg(minCos)
-                    val reject = rejectReason(-negPeak, posPeak, tilt, maxPeak, tiltMinDeg, tiltMaxDeg)
+                    val flat = flatDeg(minAbsGz)
+                    val reject = rejectReason(-negPeak, posPeak, tilt, flat, maxPeak, tiltMinDeg, tiltMaxDeg, flatMaxDeg)
                     if (reject == Reject.NONE) count++
-                    return Squat(negPeak, posPeak, t - tDown, tilt, reject)
+                    return Squat(negPeak, posPeak, t - tDown, tilt, flat, reject)
                 }
             }
             State.REFRACTORY -> if (t >= tReady) state = State.IDLE
@@ -131,14 +145,23 @@ class SquatCounter(
     companion object {
         /** "Sin límite" para el pico máximo. */
         const val NO_LIMIT = 1000f
+        /** "Sin límite" para la horizontalidad (el ángulo nunca pasa de 90°). */
+        const val NO_FLAT_LIMIT = 90f
         private const val FILTER_TAU_MS = 60f
         private const val LOBE_MAX_MS = 600L
         private const val NEW_LOBE_GAP_MS = 300L
 
         fun tiltDeg(minCos: Float): Float = Math.toDegrees(acos(minCos.coerceIn(-1f, 1f).toDouble())).toFloat()
 
+        /** Ángulo de la pantalla respecto de la vertical, dada la componente de gravedad perpendicular a ella. */
+        fun flatDeg(absGz: Float): Float = Math.toDegrees(asin(absGz.coerceIn(0f, 1f).toDouble())).toFloat()
+
         /** Única regla de veto: la usan el contador en vivo y el replay del BayesTuner. */
-        fun rejectReason(negAbs: Float, posPeak: Float, tilt: Float, maxPeak: Float, tiltMin: Float, tiltMax: Float): Reject = when {
+        fun rejectReason(
+            negAbs: Float, posPeak: Float, tilt: Float, flat: Float,
+            maxPeak: Float, tiltMin: Float, tiltMax: Float, flatMax: Float,
+        ): Reject = when {
+            flat > flatMax -> Reject.LYING
             negAbs > maxPeak || posPeak > maxPeak -> Reject.TOO_HARD
             tilt < tiltMin -> Reject.TOO_LITTLE_TILT
             tilt > tiltMax -> Reject.TOO_MUCH_TILT

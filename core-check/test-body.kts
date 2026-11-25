@@ -79,6 +79,17 @@ run {
     require(count(squats(1), strict) == 1) { "la sentadilla sola cuenta" }
     require(count(pickup + squat, strict) == 1) { "tras tomar el teléfono, la sentadilla siguiente también cuenta" }
 }
+// Acostado: el teléfono queda casi horizontal (80–105°, nunca a menos de 75° de la vertical) todo el ciclo; aceleración e inclinación imitan una sentadilla.
+val lying = reps(6, 2000, 2.5f, 25.0, 800).map { Smp(it.a, it.t, 80.0 + it.tiltDeg) }
+require(count(lying, Calibration.DEFAULT.copy(tiltMinDeg = 10f, maxPeak = 7f)) == 6) { "acostado engaña a los vetos de inclinación y pico" }
+require(count(lying, Calibration.DEFAULT.copy(flatMaxDeg = 60f)) == 0) { "horizontalidad máx. 60° veta el acostado" }
+require(count(squats(10), Calibration.DEFAULT.copy(flatMaxDeg = 40f)) == 10) { "las sentadillas pasan el veto de acostado" }
+run {
+    val k = Calibration.DEFAULT.counter()
+    var last: SquatCounter.Squat? = null
+    for (s in lying) k.process(s.a, s.t, s.gx(), s.gy(), s.gz())?.let { last = it }
+    require(last!!.flatDeg in 74f..76f && last!!.reject == SquatCounter.Reject.NONE) { "horizontalidad medida ${last!!.flatDeg}" }
+}
 run {
     val k = Calibration.DEFAULT.counter()
     var last: SquatCounter.Squat? = null
@@ -106,7 +117,7 @@ require(near(BetaDist.cdf(0.3, 2.5, 7.3), 0.6642381992386518, 1e-10)) { "cdf 2" 
 require(near(BetaDist.cdf(0.9, 33.0, 12.0), 0.9990155258558736, 1e-10)) { "cdf 3" }
 require(near(BetaDist.cdf(0.5, 0.7, 0.4), 0.3400088433511981, 1e-10)) { "cdf 4" }
 
-// 4) Preconfiguración intercalada (3 series de 10 + 6 falsaciones) con actualización bayesiana por paso
+// 4) Preconfiguración intercalada (3 series de 10 + 7 falsaciones) con actualización bayesiana por paso
 val steps = listOf(
     segment("Serie 1", true, 10, squats(10, amp = 2.5f)),
     segment("Quieto", false, 0, noise(20, 0.15f)),
@@ -117,8 +128,9 @@ val steps = listOf(
     segment("Serie 3", true, 10, squats(10, amp = 2.8f, periodMs = 2200, pauseMs = 1200)),
     segment("Brazos lento", false, 0, armsSlow),
     segment("Brazos rápido", false, 0, armsFast),
+    segment("Acostado", false, 0, lying),
 )
-require(steps[7].liveCount > 0 && steps[8].liveCount > 0) { "los brazos deben engañar a los umbrales permisivos (si no, la falsación no prueba nada)" }
+require(steps[7].liveCount > 0 && steps[8].liveCount > 0 && steps[9].liveCount > 0) { "los brazos deben engañar a los umbrales permisivos (si no, la falsación no prueba nada)" }
 
 val tuner = BayesTuner()
 val t0 = System.currentTimeMillis()
@@ -130,12 +142,13 @@ require(!tuner.history[0].posterior.hasNeg || tuner.history[0].posterior.spec < 
 
 val (cal, post) = tuner.best(0.5)
 val c = tuner.counts(tuner.bestIndex(0.5))
-println("Elegido: bajada ${cal.thresholdDown} subida ${cal.thresholdUp} minCiclo ${cal.minCycleMs} pico≤${cal.maxPeak} " +
+println("Elegido: bajada ${cal.thresholdDown} subida ${cal.thresholdUp} minCiclo ${cal.minCycleMs} pico≤${cal.maxPeak} acostado≤${cal.flatMaxDeg}° " +
     "inclinación ${cal.tiltMinDeg}–${cal.tiltMaxDeg}° | tp=${c.tp} fn=${c.fn} fp=${c.fp} tn=${c.tn} | " +
     "sens ${post.sens} ICr ${post.sensCrI()} esp ${post.spec} ICr ${post.specCrI()} | $ms ms para ${steps.size} pasos " +
     "(${BayesTuner.N} combinaciones)")
 require(c.tp == 30 && c.fn == 0 && c.fp == 0) { "debe separar perfectamente los datos sintéticos" }
 require(Tuner.replay(steps[7], cal) == 0 && Tuner.replay(steps[8], cal) == 0) { "la θ elegida veta los brazos" }
+require(Tuner.replay(steps[9], cal) == 0 && cal.flatMaxDeg < SquatCounter.NO_FLAT_LIMIT) { "y el acostado, con el veto aprendido" }
 require(steps.filter { it.positive }.all { Tuner.replay(it, cal) == 10 }) { "y cuenta todas las sentadillas" }
 require(near(post.sens, 31.0 / 32.0, 1e-12)) { "posterior Beta(1+30, 1+0)" }
 require(cal.calibrated && cal.nSquats == 30) { "metadatos" }
@@ -159,6 +172,9 @@ val noArms = BayesTuner()
 for (s in steps.take(7)) noArms.add(s, 0.5)
 val calNoArms = noArms.best(0.5).first
 require(Tuner.replay(steps[7], calNoArms) > 0) { "sin evidencia de brazos no se impone el veto (empate → menos restrictivo)" }
+val noLying = BayesTuner()
+for (s in steps.take(9)) noLying.add(s, 0.5)
+require(noLying.best(0.5).first.flatMaxDeg == SquatCounter.NO_FLAT_LIMIT) { "sin evidencia de acostado no se impone ese veto" }
 
 // 7) Peso: más peso a la sensibilidad nunca baja la sensibilidad posterior (estática comparativa del argmax)
 val hiS = tuner.best(0.95).second
@@ -204,6 +220,7 @@ run {
         val m = mapOf<String, Any>(
             "cal_thr_down" to cal.thresholdDown, "cal_thr_up" to cal.thresholdUp, "cal_min_cycle" to cal.minCycleMs,
             "cal_max_cycle" to cal.maxCycleMs, "cal_max_peak" to cal.maxPeak, "cal_tilt_min" to cal.tiltMinDeg, "cal_tilt_max" to cal.tiltMaxDeg,
+            "cal_flat_max" to cal.flatMaxDeg,
         )
         require(PrefsCodec.decode(PrefsCodec.encode(m)) == m) { "θ#$i exportada debe poder importarse" }
     }
@@ -239,7 +256,7 @@ require(RingPlan.untilText(7 * 3_600_000L + 22 * 60_000L + 1) == "7 h 23 min" &&
 require(RingPlan.volumeIndex(0.05f, 7) == 1 && RingPlan.volumeIndex(0f, 15) == 1) { "nunca muda" }
 
 // 11) Aprendizaje desde las alarmas: índice de θ, persistencia, peso 0,2 y regla «claramente mejor»
-for (i in listOf(0, BayesTuner.N - 1, tuner.bestIndex(0.5), 12345, 200_001)) {
+for (i in listOf(0, BayesTuner.N - 1, tuner.bestIndex(0.5), 12345, 200_001, 700_003)) {
     require(BayesTuner.indexOf(BayesTuner.calibration(i)) == i) { "indexOf(calibration($i))" }
 }
 require(BayesTuner.indexOf(Calibration.DEFAULT) == -1) { "los valores por defecto no están en la grilla" }

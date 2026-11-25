@@ -130,8 +130,9 @@ fun GuideGif(name: String, modifier: Modifier = Modifier) {
 /** Parámetros de detección en una línea. */
 fun vetoSummary(c: Calibration): String {
     val peak = if (c.maxPeak >= SquatCounter.NO_LIMIT) "sin límite" else "%.1f m/s²".format(c.maxPeak)
-    return "Bajada %.1f · subida %.1f m/s² · mín. %d ms · pico máx. %s · inclinación %.0f–%.0f°".format(
-        c.thresholdDown, c.thresholdUp, c.minCycleMs, peak, c.tiltMinDeg, c.tiltMaxDeg,
+    val flat = if (c.flatMaxDeg >= SquatCounter.NO_FLAT_LIMIT) "sin veto" else "veta si > %.0f°".format(c.flatMaxDeg)
+    return "Bajada %.1f · subida %.1f m/s² · mín. %d ms · pico máx. %s · inclinación %.0f–%.0f° · acostado: %s".format(
+        c.thresholdDown, c.thresholdUp, c.minCycleMs, peak, c.tiltMinDeg, c.tiltMaxDeg, flat,
     )
 }
 
@@ -140,6 +141,7 @@ fun rejectText(r: SquatCounter.Reject): String = when (r) {
     SquatCounter.Reject.TOO_HARD -> "No contó: movimiento demasiado brusco (¿con los brazos?)"
     SquatCounter.Reject.TOO_LITTLE_TILT -> "No contó: el torso no se inclinó (¿solo brazos?)"
     SquatCounter.Reject.TOO_MUCH_TILT -> "No contó: demasiada inclinación (¿agachado sin doblar las rodillas?)"
+    SquatCounter.Reject.LYING -> "No contó: el teléfono estuvo horizontal todo el ciclo (¿acostado?)"
     SquatCounter.Reject.NONE -> ""
 }
 

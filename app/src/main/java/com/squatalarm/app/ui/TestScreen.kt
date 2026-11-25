@@ -40,7 +40,7 @@ private class TestState(strictness: Float) {
 }
 
 private fun cycleInfo(s: SquatCounter.Squat) =
-    "bajada %.1f · subida %.1f m/s² · %d ms · inclinación %.0f°".format(s.negPeak, s.posPeak, s.cycleMs, s.tiltDeg)
+    "bajada %.1f · subida %.1f m/s² · %d ms · inclinación %.0f° · horizontal %.0f°".format(s.negPeak, s.posPeak, s.cycleMs, s.tiltDeg, s.flatDeg)
 
 /** Prueba rápida con los mismos umbrales que usará la alarma (calibración × exigencia). */
 @Composable

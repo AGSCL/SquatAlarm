@@ -97,7 +97,7 @@ vieja; al reinstalar la nueva, los parámetros reaparecen).
 
 ### Pasos
 
-Las series de 10 sentadillas (30–60 en total) van **intercaladas** con 6 pruebas de falsación de 20 s, para que el
+Las series de 10 sentadillas (30–60 en total) van **intercaladas** con 7 pruebas de falsación de 20 s, para que el
 modelo aprenda desde el inicio qué es y qué no es una sentadilla y para repartir la fatiga. Antes de cada paso se ve
 un GIF de la postura. Un pitido marca el inicio y, en las falsaciones, también el final, porque con el teléfono contra
 el pecho no se ve la pantalla. Tras cada paso la app dice cuánto contó y pregunta qué hiciste realmente; si el
@@ -114,7 +114,7 @@ conteo no coincide, la diferencia queda registrada como falsos positivos o falso
 <td align="center"><img src="app/src/main/assets/guides/inclinarse.gif" width="150"><br>Falsación: inclinarse<br>(rodillas rectas)</td>
 <td align="center"><img src="app/src/main/assets/guides/brazos_lento.gif" width="150"><br>Falsación: solo brazos,<br>lento y vertical</td>
 <td align="center"><img src="app/src/main/assets/guides/brazos_rapido.gif" width="150"><br>Falsación: solo brazos,<br>rápido</td>
-<td></td>
+<td align="center"><img src="app/src/main/assets/guides/acostado.gif" width="150"><br>Falsación: acostado,<br>brazos arriba</td>
 </tr>
 </table>
 
@@ -123,23 +123,28 @@ el teléfono tanto como una sentadilla, pero no lo inclinan como el torso.
 
 ### Torso vs. brazos
 
-Además de los umbrales de amplitud y tiempo, cada ciclo candidato se mide con dos rasgos que separan el torso de
-los brazos:
+Además de los umbrales de amplitud y tiempo, cada ciclo candidato se mide con tres rasgos que separan el torso de
+los brazos y al que está de pie del que sigue en la cama:
 
 - **Inclinación**: es el ángulo máximo entre la gravedad al inicio del ciclo y la gravedad durante el ciclo, medida
   en el marco del teléfono. Con el teléfono contra el pecho, el torso se inclina al bajar (típicamente 15–45°). Si
   se mueve el teléfono vertical con los brazos, la inclinación queda en ~0°. Si se inclina la cintura con las
   rodillas rectas, se pasa de 60°.
 - **Pico máximo de aceleración**: los brazos mueven el teléfono mucho más bruscamente que el cuerpo entero.
+- **Horizontalidad**: lo más cerca de la vertical que estuvo la pantalla durante el ciclo (0° = vertical, 90° =
+  horizontal). De pie, con el teléfono contra el pecho, la pantalla pasa por la vertical al empezar a bajar (~0–20°).
+  Acostado boca arriba y estirando los brazos hacia el techo, el teléfono queda horizontal todo el ciclo (~70–90°),
+  aunque la aceleración vertical imite una sentadilla.
 
-Un ciclo que cae fuera de la ventana de inclinación o supera el pico máximo **no cuenta** (veto).
+Un ciclo que cae fuera de la ventana de inclinación, supera el pico máximo o queda demasiado horizontal **no cuenta**
+(veto).
 
 ### Modelo
 
 Cada combinación θ de parámetros define una configuración del detector: umbral de bajada y de subida
 (0,4–3,0 m/s²), tiempo mínimo bajada→subida (300/400/500 ms), pico máximo (sin límite, 12, 9, 7, 5,5, 4,5 o
-3,5 m/s²) y ventana de inclinación (mínimo 0/5/10/20°, máximo 180/90/60/45/30°). En total son 306.180
-combinaciones, y cada una tiene sus propios posteriores:
+3,5 m/s²), ventana de inclinación (mínimo 0/5/10/20°, máximo 180/90/60/45/30°) y horizontalidad máxima (sin
+veto, 60° o 40°). En total son 918.540 combinaciones, y cada una tiene sus propios posteriores:
 
 - sensibilidad S_θ ~ Beta(1 + VP_θ, 1 + FN_θ)
 - especificidad E_θ ~ Beta(1 + VN_θ, 1 + FP_θ)

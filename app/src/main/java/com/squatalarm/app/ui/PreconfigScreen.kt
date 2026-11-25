@@ -86,6 +86,12 @@ private val FALSIFICATIONS = listOf(
         0, 20, false, "brazos_lento",
     ),
     RecStep("Falsación: solo brazos, rápido", false, "Igual que la anterior, pero rápido y sin cuidar la posición del teléfono.", 0, 20, false, "brazos_rapido"),
+    RecStep(
+        "Falsación: acostado, brazos", false,
+        "Acuéstate boca arriba con el teléfono en el pecho. Sin levantarte, estira los brazos hacia el frente y arriba " +
+            "y vuelve al pecho, al ritmo de una sentadilla. Es lo que se puede hacer desde la cama para engañar a la alarma.",
+        0, 20, false, "acostado",
+    ),
 )
 
 /** Series intercaladas con falsaciones: contrabalancea la fatiga y el posterior aprende ambos lados desde el inicio. */
@@ -105,6 +111,7 @@ private val VALIDATION_STEPS = listOf(
     RecStep("Validación: sentadillas", true, "Haz 10 sentadillas. Ahora la app usa los parámetros elegidos.", 10, 150, true, "sentadilla"),
     RecStep("Validación: caminar", false, "Camina en el lugar. No debería contar nada.", 0, 20, true, "caminar"),
     RecStep("Validación: solo brazos", false, "Baja y sube el teléfono solo con los brazos. No debería contar nada.", 0, 20, true, "brazos_lento"),
+    RecStep("Validación: acostado", false, "Acostado, estira y recoge los brazos con el teléfono. No debería contar nada.", 0, 20, true, "acostado"),
 )
 
 private class PreState {
@@ -131,7 +138,7 @@ private class PreState {
 }
 
 /**
- * Preconfiguración: series de 10 sentadillas intercaladas con 6 pruebas de falsación, cada paso
+ * Preconfiguración: series de 10 sentadillas intercaladas con 7 pruebas de falsación, cada paso
  * contrastado con lo que el usuario dice haber hecho. Tras cada paso el modelo bayesiano actualiza
  * sensibilidad y especificidad de todas las combinaciones de parámetros y el detector pasa a la mejor.
  * Al terminar se guarda solo; la validación prueba los parámetros con datos nuevos.
@@ -360,7 +367,7 @@ private fun ColumnScope.Intro(st: PreState, sensorAvailable: Boolean, onStart: (
     Text(
         "Esta fase mide cómo se mueve tu teléfono cuando haces sentadillas y cuando NO las haces, y ajusta la detección a ti.\n\n" +
             "• Sostén el teléfono contra el pecho con las dos manos, pantalla hacia afuera: al bajar, tu torso se inclina y eso lo distingue de mover el teléfono con los brazos.\n" +
-            "• ${st.totalSquats / 10} series de 10 sentadillas intercaladas con 6 pruebas de falsación de 20 s (quieto, caminar, sacudir, inclinarse y dos de solo brazos). Cada paso trae un GIF de la postura.\n" +
+            "• ${st.totalSquats / 10} series de 10 sentadillas intercaladas con ${FALSIFICATIONS.size} pruebas de falsación de 20 s (quieto, caminar, sacudir, inclinarse, dos de solo brazos y una acostado). Cada paso trae un GIF de la postura.\n" +
             "• Tras cada paso te preguntamos qué hiciste realmente y el modelo bayesiano actualiza la sensibilidad y especificidad de ${BayesTuner.N} combinaciones de parámetros; el detector pasa a usar la mejor.\n" +
             "• Al final se guarda solo, y puedes validarlo con datos nuevos."
     )

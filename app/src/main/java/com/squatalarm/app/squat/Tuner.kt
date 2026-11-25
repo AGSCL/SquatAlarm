@@ -166,7 +166,7 @@ object BetaDist {
 
 /**
  * Adaptación bayesiana de la detección. Cada combinación θ de parámetros (umbrales de bajada y
- * subida, tiempo mínimo, pico máximo, ventana de inclinación) tiene su propio posterior
+ * subida, tiempo mínimo, pico máximo, ventana de inclinación, horizontalidad máxima) tiene su propio posterior
  * Beta-binomial de sensibilidad y especificidad, con previa uniforme Beta(1,1). Tras cada paso de la
  * preconfiguración se re-analiza solo ese tramo con todas las θ (conjugación: los conteos se suman)
  * y el detector pasa a la θ que maximiza la utilidad esperada a posteriori
@@ -203,22 +203,24 @@ class BayesTuner {
         var negAbs = FloatArray(64)
         var pos = FloatArray(64)
         var tilt = FloatArray(64)
+        var flat = FloatArray(64)
         for (b in 0 until N_BASE) {
             var k = 0
             seg.replay(baseCounter(b)) { s ->
                 if (k == negAbs.size) {
-                    negAbs = negAbs.copyOf(k * 2); pos = pos.copyOf(k * 2); tilt = tilt.copyOf(k * 2)
+                    negAbs = negAbs.copyOf(k * 2); pos = pos.copyOf(k * 2); tilt = tilt.copyOf(k * 2); flat = flat.copyOf(k * 2)
                 }
-                negAbs[k] = -s.negPeak; pos[k] = s.posPeak; tilt[k] = s.tiltDeg
+                negAbs[k] = -s.negPeak; pos[k] = s.posPeak; tilt[k] = s.tiltDeg; flat[k] = s.flatDeg
                 k++
             }
             for (v in 0 until N_VETO) {
-                val maxPeak = PEAKS[v / (N_TMIN * N_TMAX)]
-                val tMin = TILT_MINS[(v / N_TMAX) % N_TMIN]
-                val tMax = TILT_MAXS[v % N_TMAX]
+                val maxPeak = PEAKS[vPeak(v)]
+                val tMin = TILT_MINS[vTiltMin(v)]
+                val tMax = TILT_MAXS[vTiltMax(v)]
+                val fMax = FLAT_MAXS[vFlat(v)]
                 var d = 0
                 for (j in 0 until k) {
-                    if (SquatCounter.rejectReason(negAbs[j], pos[j], tilt[j], maxPeak, tMin, tMax) == SquatCounter.Reject.NONE) d++
+                    if (SquatCounter.rejectReason(negAbs[j], pos[j], tilt[j], flat[j], maxPeak, tMin, tMax, fMax) == SquatCounter.Reject.NONE) d++
                 }
                 val i = b * N_VETO + v
                 val fpSeg = maxOf(d - truth, 0)
@@ -287,8 +289,10 @@ class BayesTuner {
         val PEAKS = floatArrayOf(SquatCounter.NO_LIMIT, 12f, 9f, 7f, 5.5f, 4.5f, 3.5f)
         val TILT_MINS = floatArrayOf(0f, 5f, 10f, 20f)
         val TILT_MAXS = floatArrayOf(180f, 90f, 60f, 45f, 30f)
+        /** Horizontalidad máxima: 60° veta el teléfono acostado plano; 40°, también semirrecostado en la almohada. */
+        val FLAT_MAXS = floatArrayOf(SquatCounter.NO_FLAT_LIMIT, 60f, 40f)
         const val DEFAULT_WINDOW_MS = 2500L
-        private const val FORMAT = 1
+        private const val FORMAT = 2
 
         /** Lee lo guardado con [write]; null si es de otra versión de la grilla de parámetros. */
         fun read(input: java.io.InputStream): BayesTuner? {
@@ -312,22 +316,28 @@ class BayesTuner {
             val iP = PEAKS.indexOfFirst { it == c.maxPeak }
             val iMin = TILT_MINS.indexOfFirst { it == c.tiltMinDeg }
             val iMax = TILT_MAXS.indexOfFirst { it == c.tiltMaxDeg }
-            if (listOf(iD, iU, iC, iP, iMin, iMax).any { it < 0 } || c.maxCycleMs != MAX_CYCLE_MS) return -1
-            return ((iD * N_T + iU) * N_CYC + iC) * N_VETO + (iP * N_TMIN + iMin) * N_TMAX + iMax
+            val iF = FLAT_MAXS.indexOfFirst { it == c.flatMaxDeg }
+            if (listOf(iD, iU, iC, iP, iMin, iMax, iF).any { it < 0 } || c.maxCycleMs != MAX_CYCLE_MS) return -1
+            return ((iD * N_T + iU) * N_CYC + iC) * N_VETO + ((iP * N_TMIN + iMin) * N_TMAX + iMax) * N_FLAT + iF
         }
 
         private val N_T = THRESHOLDS.size
         private val N_CYC = MIN_CYCLES.size
         private val N_TMIN = TILT_MINS.size
         private val N_TMAX = TILT_MAXS.size
+        private val N_FLAT = FLAT_MAXS.size
         val N_BASE = N_T * N_T * N_CYC
-        val N_VETO = PEAKS.size * N_TMIN * N_TMAX
+        val N_VETO = PEAKS.size * N_TMIN * N_TMAX * N_FLAT
         val N = N_BASE * N_VETO
 
         private fun iDown(i: Int) = (i / N_VETO) / (N_T * N_CYC)
         private fun iUp(i: Int) = ((i / N_VETO) / N_CYC) % N_T
         private fun iCycle(i: Int) = (i / N_VETO) % N_CYC
-        private fun vetoScore(v: Int) = v / (N_TMIN * N_TMAX) + (v / N_TMAX) % N_TMIN + v % N_TMAX
+        private fun vPeak(v: Int) = v / (N_TMIN * N_TMAX * N_FLAT)
+        private fun vTiltMin(v: Int) = (v / (N_TMAX * N_FLAT)) % N_TMIN
+        private fun vTiltMax(v: Int) = (v / N_FLAT) % N_TMAX
+        private fun vFlat(v: Int) = v % N_FLAT
+        private fun vetoScore(v: Int) = vPeak(v) + vTiltMin(v) + vTiltMax(v) + vFlat(v)
 
         fun calibration(i: Int): Calibration {
             val v = i % N_VETO
@@ -336,9 +346,10 @@ class BayesTuner {
                 thresholdUp = THRESHOLDS[iUp(i)],
                 minCycleMs = MIN_CYCLES[iCycle(i)],
                 maxCycleMs = MAX_CYCLE_MS,
-                maxPeak = PEAKS[v / (N_TMIN * N_TMAX)],
-                tiltMinDeg = TILT_MINS[(v / N_TMAX) % N_TMIN],
-                tiltMaxDeg = TILT_MAXS[v % N_TMAX],
+                maxPeak = PEAKS[vPeak(v)],
+                tiltMinDeg = TILT_MINS[vTiltMin(v)],
+                tiltMaxDeg = TILT_MAXS[vTiltMax(v)],
+                flatMaxDeg = FLAT_MAXS[vFlat(v)],
             )
         }
 

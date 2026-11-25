@@ -193,7 +193,54 @@ def draw_frame(name, f):
     return img.resize((W, H), Image.LANCZOS)
 
 
-NAMES = ["sentadilla", "quieto", "caminar", "sacudir", "inclinarse", "brazos_lento", "brazos_rapido"]
+def draw_lying(f):
+    """Acostado boca arriba: los brazos suben el teléfono (siempre horizontal) del pecho hacia el techo y vuelven."""
+    img = Image.new("RGB", (W * SS, H * SS), BG)
+    d = ImageDraw.Draw(img)
+
+    def P(pt):
+        return (pt[0] * SS, pt[1] * SS)
+
+    def seg(a, b, col, w):
+        d.line([P(a), P(b)], fill=col, width=int(w * SS))
+        for q in (a, b):
+            r = w * SS / 2
+            d.ellipse([q[0] * SS - r, q[1] * SS - r, q[0] * SS + r, q[1] * SS + r], fill=col)
+
+    e = ease(f / FRAMES)
+    d.line([P((4, GROUND_Y)), P((232, GROUND_Y))], fill=GROUND, width=3 * SS)  # cama
+    y = GROUND_Y - 8
+    hip = (114.0, y)
+    shoulder = (hip[0] + TRUNK, y)
+    head = (shoulder[0] + NECK + HEAD_R, y - 2)
+    knee = (hip[0] - THIGH, y)
+    ankle = (knee[0] - SHIN, y)
+    seg(ankle, knee, BODY, 7)
+    seg(knee, hip, BODY, 7)
+    seg((ankle[0], y), (ankle[0] - 2, y - FOOT), BODY, 5)  # pie hacia arriba
+    seg(hip, shoulder, BODY, 9)
+    r = HEAD_R * SS
+    d.ellipse([head[0] * SS - r, head[1] * SS - r, head[0] * SS + r, head[1] * SS + r], fill=BODY)
+
+    chest = (shoulder[0] - 14, y - 12)
+    top = (shoulder[0] - 4, y - UPPER - FORE + 4)
+    hand = (chest[0] + (top[0] - chest[0]) * e, chest[1] + (top[1] - chest[1]) * e)
+    hl, hw = PHONE_LEN / 2, PHONE_W / 2
+    d.rectangle([P((hand[0] - hl, hand[1] - hw)), P((hand[0] + hl, hand[1] + hw))], fill=PHONE)
+    el = elbow(shoulder, hand)
+    seg(shoulder, el, BODY, 6)
+    seg(el, hand, BODY, 5)
+
+    ref_y = chest[1]
+    for x0 in range(216, 232, 8):
+        d.line([P((x0, ref_y)), P((x0 + 5, ref_y))], fill=REF, width=2 * SS)
+    d.line([P((240, ref_y)), P((240, hand[1]))], fill=REF, width=2 * SS)
+    rr = 5 * SS
+    d.ellipse([240 * SS - rr, hand[1] * SS - rr, 240 * SS + rr, hand[1] * SS + rr], fill=PHONE)
+    return img.resize((W, H), Image.LANCZOS)
+
+
+NAMES = ["sentadilla", "quieto", "caminar", "sacudir", "inclinarse", "brazos_lento", "brazos_rapido", "acostado"]
 
 
 def main():
@@ -202,7 +249,8 @@ def main():
     os.makedirs(out, exist_ok=True)
     sheet_dir = sys.argv[sys.argv.index("--sheet") + 1] if "--sheet" in sys.argv else None
     for name in NAMES:
-        frames = [draw_frame(name, f) for f in range(FRAMES)]
+        draw = draw_lying if name == "acostado" else (lambda f, n=name: draw_frame(n, f))
+        frames = [draw(f) for f in range(FRAMES)]
         strip = Image.new("RGB", (W * 6, H))
         for i, f in enumerate((0, 8, 15, 23, 30, 45)):
             strip.paste(frames[f], (i * W, 0))

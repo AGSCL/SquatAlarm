@@ -12,6 +12,7 @@ data class Calibration(
     val maxPeak: Float = SquatCounter.NO_LIMIT,
     val tiltMinDeg: Float = 0f,
     val tiltMaxDeg: Float = 180f,
+    val flatMaxDeg: Float = SquatCounter.NO_FLAT_LIMIT,
     val calibrated: Boolean = false,
     val nSquats: Int = 0,
     val sens: Float = -1f,
@@ -21,7 +22,7 @@ data class Calibration(
 ) {
     /** Contador con estos parámetros; [strictness] multiplica los umbrales de bajada y subida. */
     fun counter(strictness: Float = 1f) = SquatCounter(
-        thresholdDown * strictness, thresholdUp * strictness, minCycleMs, maxCycleMs, maxPeak, tiltMinDeg, tiltMaxDeg,
+        thresholdDown * strictness, thresholdUp * strictness, minCycleMs, maxCycleMs, maxPeak, tiltMinDeg, tiltMaxDeg, flatMaxDeg,
     )
 
     /** Aplica estos parámetros a un contador existente (detector en vivo). */
@@ -33,6 +34,7 @@ data class Calibration(
         c.maxPeak = maxPeak
         c.tiltMinDeg = tiltMinDeg
         c.tiltMaxDeg = tiltMaxDeg
+        c.flatMaxDeg = flatMaxDeg
     }
 
     companion object {

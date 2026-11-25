@@ -152,6 +152,7 @@ class AlarmPrefs(context: Context) {
             maxPeak = sp.getFloat("cal_max_peak", Calibration.DEFAULT.maxPeak),
             tiltMinDeg = sp.getFloat("cal_tilt_min", Calibration.DEFAULT.tiltMinDeg),
             tiltMaxDeg = sp.getFloat("cal_tilt_max", Calibration.DEFAULT.tiltMaxDeg),
+            flatMaxDeg = sp.getFloat("cal_flat_max", Calibration.DEFAULT.flatMaxDeg),
             calibrated = sp.getBoolean("cal_done", false),
             nSquats = sp.getInt("cal_n", 0),
             sens = sp.getFloat("cal_sens", -1f),
@@ -167,6 +168,7 @@ class AlarmPrefs(context: Context) {
             .putFloat("cal_max_peak", c.maxPeak)
             .putFloat("cal_tilt_min", c.tiltMinDeg)
             .putFloat("cal_tilt_max", c.tiltMaxDeg)
+            .putFloat("cal_flat_max", c.flatMaxDeg)
             .putBoolean("cal_done", c.calibrated)
             .putInt("cal_n", c.nSquats)
             .putFloat("cal_sens", c.sens)
